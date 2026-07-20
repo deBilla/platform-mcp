@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "platform-mcp": {
+      "command": "/absolute/path/to/platform-mcp/.venv/bin/platform-mcp",
+      "env": {
+        "GCP_PROJECT": "YOUR_PROJECT_ID",
+        "IMPERSONATE_SERVICE_ACCOUNT": "platform-mcp-ro@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+      }
+    }
+  }
+}
