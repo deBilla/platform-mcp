@@ -3,8 +3,8 @@
     "platform-mcp": {
       "command": "/absolute/path/to/platform-mcp/.venv/bin/platform-mcp",
       "env": {
-        "GCP_PROJECT": "YOUR_PROJECT_ID",
-        "IMPERSONATE_SERVICE_ACCOUNT": "platform-mcp-ro@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+        "PLATFORM_MCP_DEFAULT_ENVIRONMENT": "staging",
+        "PLATFORM_MCP_ENVIRONMENTS": "{\"staging\":{\"project\":\"YOUR_STAGING_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_STAGING_PROJECT_ID.iam.gserviceaccount.com\"},\"production\":{\"project\":\"YOUR_PROD_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_PROD_PROJECT_ID.iam.gserviceaccount.com\",\"billing_export_table\":\"YOUR_PROD_PROJECT_ID.billing.gcp_billing_export_v1_XXXXXX\"}}"
       }
     }
   }

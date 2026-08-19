@@ -5,7 +5,7 @@ from __future__ import annotations
 from google.api_core.exceptions import GoogleAPICallError, NotFound, PermissionDenied
 
 from ..clients import get_asset_client, get_recommender_client
-from ..config import require_project
+from ..config import Environment, resolve_environment
 from ..formatting import money_to_float, parse_list_arg, truncate
 
 # Cost-related recommenders. Most are zonal/regional, so we fan out across the
@@ -38,14 +38,14 @@ def _region_of(location: str) -> str | None:
     return None
 
 
-def _discover_locations() -> list[str]:
+def _discover_locations(env: Environment) -> list[str]:
     """Find zones/regions where the project has cost-relevant resources."""
     locations: set[str] = set()
     try:
-        client = get_asset_client()
+        client = get_asset_client(env)
         results = client.search_all_resources(
             request={
-                "scope": f"projects/{require_project()}",
+                "scope": f"projects/{env.project}",
                 "asset_types": _LOCATION_ASSET_TYPES,
                 "page_size": 500,
             }
@@ -84,7 +84,12 @@ def _format_recommendation(rec) -> dict:
     }
 
 
-def list_recommendations(recommender_id: str, location: str = "global", limit: int = 50) -> dict:
+def list_recommendations(
+    recommender_id: str,
+    location: str = "global",
+    limit: int = 50,
+    environment: str = "",
+) -> dict:
     """List recommendations from a specific recommender at a specific location.
 
     Args:
@@ -94,9 +99,12 @@ def list_recommendations(recommender_id: str, location: str = "global", limit: i
         location: Zone (e.g. 'us-central1-a'), region (e.g. 'us-central1'), or
             'global' depending on the recommender. Default 'global'.
         limit: Maximum number of recommendations to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
     """
-    client = get_recommender_client()
-    project = require_project()
+    env = resolve_environment(environment)
+    client = get_recommender_client(env)
+    project = env.project
     parent = f"projects/{project}/locations/{location}/recommenders/{recommender_id}"
     items = []
     for rec in client.list_recommendations(parent=parent):
@@ -104,6 +112,7 @@ def list_recommendations(recommender_id: str, location: str = "global", limit: i
         if len(items) >= limit:
             break
     return {
+        "environment": env.name,
         "project": project,
         "recommender": recommender_id,
         "location": location,
@@ -112,7 +121,11 @@ def list_recommendations(recommender_id: str, location: str = "global", limit: i
     }
 
 
-def list_cost_recommendations(locations: str = "", limit_per_call: int = 50) -> dict:
+def list_cost_recommendations(
+    locations: str = "",
+    limit_per_call: int = 50,
+    environment: str = "",
+) -> dict:
     """Aggregate GCP cost-optimization recommendations (idle/rightsizing/etc).
 
     Fans out the cost recommenders across the locations where the project has
@@ -123,13 +136,17 @@ def list_cost_recommendations(locations: str = "", limit_per_call: int = 50) -> 
             'us-central1,us-central1-a'). If empty, auto-discovers from Asset
             Inventory (requires the Cloud Asset API).
         limit_per_call: Max recommendations to pull per recommender+location.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
     """
-    client = get_recommender_client()
-    project = require_project()
+    env = resolve_environment(environment)
+    client = get_recommender_client(env)
+    project = env.project
 
-    loc_list = parse_list_arg(locations) or _discover_locations()
+    loc_list = parse_list_arg(locations) or _discover_locations(env)
     if not loc_list:
         return {
+            "environment": env.name,
             "project": project,
             "status": "no_locations",
             "message": (
@@ -167,6 +184,7 @@ def list_cost_recommendations(locations: str = "", limit_per_call: int = 50) -> 
     findings.sort(key=lambda x: x.get("monthly_cost_impact") or 0)
     # Savings are negative cost deltas; report as a positive number.
     return {
+        "environment": env.name,
         "project": project,
         "locations_scanned": loc_list,
         "count": len(findings),

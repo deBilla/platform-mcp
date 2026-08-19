@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
-
 from google.api_core.exceptions import GoogleAPICallError
 
 from ..clients import get_bigquery_client, get_billing_client
-from ..config import require_project
+from ..config import resolve_environment
 
 # Whitelisted group-by columns -> billing export column expressions. Kept as a
 # whitelist because column identifiers cannot be passed as query parameters.
@@ -19,32 +17,43 @@ _GROUP_BY_COLUMNS = {
 }
 
 
-def get_cost_breakdown(group_by: str = "service", days: int = 30, limit: int = 20) -> dict:
+def get_cost_breakdown(
+    group_by: str = "service",
+    days: int = 30,
+    limit: int = 20,
+    environment: str = "",
+) -> dict:
     """Summarize recent spend from the BigQuery billing export.
 
-    Requires a standard-usage billing export configured in BigQuery and the
-    table set via the BILLING_EXPORT_TABLE env var (fully qualified, e.g.
-    'my-project.billing.gcp_billing_export_v1_XXXXXX').
+    Requires a standard-usage billing export configured in BigQuery, with the
+    fully-qualified table set per environment via 'billing_export_table' in
+    PLATFORM_MCP_ENVIRONMENTS (e.g. 'my-project.billing.gcp_billing_export_v1_X').
 
     Args:
         group_by: One of 'service', 'sku', 'project', 'region'. Default 'service'.
         days: Lookback window in days over usage_start_time. Default 30.
         limit: Max rows returned (highest net cost first).
+        environment: Which configured GCP environment to bill against, e.g.
+            'staging' or 'production'. Omit to use the default environment.
     """
-    table = os.environ.get("BILLING_EXPORT_TABLE", "").strip()
+    env = resolve_environment(environment)
+    table = env.billing_export_table
     if not table:
         return {
+            "environment": env.name,
             "status": "not_configured",
             "message": (
-                "BigQuery billing export is not configured. Enable a Standard "
-                "usage cost export (Billing > Billing export) and set the "
-                "BILLING_EXPORT_TABLE env var to the fully-qualified table id."
+                "BigQuery billing export is not configured for environment "
+                f"'{env.name}'. Enable a Standard usage cost export (Billing > "
+                "Billing export) and set 'billing_export_table' for this "
+                "environment in PLATFORM_MCP_ENVIRONMENTS."
             ),
         }
 
     column = _GROUP_BY_COLUMNS.get(group_by.lower())
     if column is None:
         return {
+            "environment": env.name,
             "status": "invalid_argument",
             "message": f"group_by must be one of {sorted(_GROUP_BY_COLUMNS)}",
         }
@@ -67,7 +76,7 @@ def get_cost_breakdown(group_by: str = "service", days: int = 30, limit: int = 2
 
     from google.cloud import bigquery
 
-    client = get_bigquery_client()
+    client = get_bigquery_client(env)
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("days", "INT64", days),
@@ -77,7 +86,12 @@ def get_cost_breakdown(group_by: str = "service", days: int = 30, limit: int = 2
     try:
         rows = list(client.query(sql, job_config=job_config).result())
     except GoogleAPICallError as exc:
-        return {"status": "error", "message": str(exc), "table": table}
+        return {
+            "environment": env.name,
+            "status": "error",
+            "message": str(exc),
+            "table": table,
+        }
 
     breakdown = [
         {
@@ -89,6 +103,8 @@ def get_cost_breakdown(group_by: str = "service", days: int = 30, limit: int = 2
         for r in rows
     ]
     return {
+        "environment": env.name,
+        "project": env.project,
         "table": table,
         "group_by": group_by.lower(),
         "days": days,
@@ -97,12 +113,19 @@ def get_cost_breakdown(group_by: str = "service", days: int = 30, limit: int = 2
     }
 
 
-def get_billing_info() -> dict:
-    """Return the billing account linked to the project and its status."""
-    client = get_billing_client()
-    project = require_project()
+def get_billing_info(environment: str = "") -> dict:
+    """Return the billing account linked to the project and its status.
+
+    Args:
+        environment: Which configured GCP environment to inspect, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    env = resolve_environment(environment)
+    client = get_billing_client(env)
+    project = env.project
     info = client.get_project_billing_info(name=f"projects/{project}")
     return {
+        "environment": env.name,
         "project": project,
         "billing_account": info.billing_account_name,
         "billing_enabled": info.billing_enabled,

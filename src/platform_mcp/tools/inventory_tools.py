@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..clients import get_asset_client
-from ..config import require_project
+from ..config import resolve_environment
 from ..formatting import parse_list_arg
 
 
@@ -22,7 +22,12 @@ def _format_resource(r) -> dict:
     }
 
 
-def search_assets(asset_types: str = "", query: str = "", limit: int = 100) -> dict:
+def search_assets(
+    asset_types: str = "",
+    query: str = "",
+    limit: int = 100,
+    environment: str = "",
+) -> dict:
     """Search all cloud resources in the project via Cloud Asset Inventory.
 
     Args:
@@ -31,9 +36,13 @@ def search_assets(asset_types: str = "", query: str = "", limit: int = 100) -> d
         query: Optional free-text/structured query, e.g. 'state:RUNNING' or
             'location:us-central1'.
         limit: Maximum number of resources to return.
+        environment: Which configured GCP environment to search, e.g. 'staging'
+            or 'production'. Omit to use the default environment. Call
+            list_environments to see what is configured.
     """
-    client = get_asset_client()
-    project = require_project()
+    env = resolve_environment(environment)
+    client = get_asset_client(env)
+    project = env.project
     limit = max(1, min(limit, 500))
 
     request: dict = {"scope": f"projects/{project}", "page_size": min(limit, 500)}
@@ -50,6 +59,7 @@ def search_assets(asset_types: str = "", query: str = "", limit: int = 100) -> d
             break
 
     return {
+        "environment": env.name,
         "project": project,
         "asset_types": types or "ALL",
         "count": len(resources),
@@ -57,24 +67,56 @@ def search_assets(asset_types: str = "", query: str = "", limit: int = 100) -> d
     }
 
 
-def list_compute_instances(limit: int = 100) -> dict:
-    """List Compute Engine VM instances with location and status."""
-    return search_assets("compute.googleapis.com/Instance", limit=limit)
+def list_compute_instances(limit: int = 100, environment: str = "") -> dict:
+    """List Compute Engine VM instances with location and status.
+
+    Args:
+        limit: Maximum number of instances to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    return search_assets(
+        "compute.googleapis.com/Instance", limit=limit, environment=environment
+    )
 
 
-def list_cloud_run_services(limit: int = 100) -> dict:
-    """List Cloud Run services."""
-    return search_assets("run.googleapis.com/Service", limit=limit)
+def list_cloud_run_services(limit: int = 100, environment: str = "") -> dict:
+    """List Cloud Run services.
+
+    Args:
+        limit: Maximum number of services to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    return search_assets(
+        "run.googleapis.com/Service", limit=limit, environment=environment
+    )
 
 
-def list_gke_clusters(limit: int = 100) -> dict:
-    """List GKE (Kubernetes Engine) clusters."""
-    return search_assets("container.googleapis.com/Cluster", limit=limit)
+def list_gke_clusters(limit: int = 100, environment: str = "") -> dict:
+    """List GKE (Kubernetes Engine) clusters.
+
+    Args:
+        limit: Maximum number of clusters to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    return search_assets(
+        "container.googleapis.com/Cluster", limit=limit, environment=environment
+    )
 
 
-def list_sql_instances(limit: int = 100) -> dict:
-    """List Cloud SQL instances."""
-    return search_assets("sqladmin.googleapis.com/Instance", limit=limit)
+def list_sql_instances(limit: int = 100, environment: str = "") -> dict:
+    """List Cloud SQL instances.
+
+    Args:
+        limit: Maximum number of instances to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    return search_assets(
+        "sqladmin.googleapis.com/Instance", limit=limit, environment=environment
+    )
 
 
 def register(mcp) -> None:

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..clients import get_logging_client
-from ..config import get_settings, require_project
+from ..config import resolve_environment
 from ..formatting import parse_duration_seconds, truncate
 
 
@@ -40,7 +40,12 @@ def _format_entry(entry: Any) -> dict:
     }
 
 
-def query_logs(filter: str = "", freshness: str = "1h", limit: int = 50) -> dict:
+def query_logs(
+    filter: str = "",
+    freshness: str = "1h",
+    limit: int = 50,
+    environment: str = "",
+) -> dict:
     """Query Cloud Logging with an advanced-filter expression.
 
     Args:
@@ -48,8 +53,12 @@ def query_logs(filter: str = "", freshness: str = "1h", limit: int = 50) -> dict
             resource.type="cloud_run_revision"'). Leave empty to match all logs.
         freshness: How far back to look, e.g. '30m', '1h', '2d'. Default '1h'.
         limit: Maximum number of entries to return (newest first).
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment. Call
+            list_environments to see what is configured.
     """
-    client = get_logging_client()
+    env = resolve_environment(environment)
+    client = get_logging_client(env)
     limit = max(1, min(limit, 500))
     time_filter = f'timestamp>="{_since_timestamp(freshness)}"'
     full_filter = f"({filter}) AND {time_filter}" if filter.strip() else time_filter
@@ -64,14 +73,20 @@ def query_logs(filter: str = "", freshness: str = "1h", limit: int = 50) -> dict
     )
     rows = [_format_entry(e) for e in entries]
     return {
-        "project": require_project(),
+        "environment": env.name,
+        "project": env.project,
         "filter": full_filter,
         "count": len(rows),
         "entries": rows,
     }
 
 
-def get_recent_errors(service: str = "", hours: int = 1, limit: int = 50) -> dict:
+def get_recent_errors(
+    service: str = "",
+    hours: int = 1,
+    limit: int = 50,
+    environment: str = "",
+) -> dict:
     """Return recent log entries at severity ERROR or higher.
 
     Args:
@@ -79,12 +94,19 @@ def get_recent_errors(service: str = "", hours: int = 1, limit: int = 50) -> dic
             resource.labels.service_name and logName).
         hours: How many hours back to search. Default 1.
         limit: Maximum number of entries to return (newest first).
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
     """
     parts = ["severity>=ERROR"]
     if service.strip():
         s = service.strip()
         parts.append(f'(resource.labels.service_name="{s}" OR logName:"{s}")')
-    return query_logs(filter=" AND ".join(parts), freshness=f"{max(1, hours)}h", limit=limit)
+    return query_logs(
+        filter=" AND ".join(parts),
+        freshness=f"{max(1, hours)}h",
+        limit=limit,
+        environment=environment,
+    )
 
 
 def register(mcp) -> None:

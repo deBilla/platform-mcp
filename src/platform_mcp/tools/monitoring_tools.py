@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from ..clients import get_alert_policy_client, get_metric_client, get_uptime_client
-from ..config import require_project
+from ..config import resolve_environment
 from ..formatting import parse_duration_seconds, truncate
 
 _ALIGNERS = {
@@ -37,6 +37,7 @@ def query_metric(
     aligner: str = "MEAN",
     alignment_period: str = "5m",
     limit: int = 10,
+    environment: str = "",
 ) -> dict:
     """Query a Cloud Monitoring metric time series.
 
@@ -48,11 +49,14 @@ def query_metric(
             COUNT, RATE, PERCENTILE_99. Default MEAN.
         alignment_period: Bucket size for aggregation, e.g. '1m', '5m'. Default '5m'.
         limit: Maximum number of time series to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
     """
     from google.cloud import monitoring_v3
 
-    client = get_metric_client()
-    project = require_project()
+    env = resolve_environment(environment)
+    client = get_metric_client(env)
+    project = env.project
     limit = max(1, min(limit, 50))
 
     now = int(time.time())
@@ -108,6 +112,7 @@ def query_metric(
             break
 
     return {
+        "environment": env.name,
         "project": project,
         "metric_type": metric_type,
         "aligner": aligner.upper(),
@@ -116,10 +121,17 @@ def query_metric(
     }
 
 
-def list_alert_policies(limit: int = 100) -> dict:
-    """List Cloud Monitoring alert policies and whether they are enabled."""
-    client = get_alert_policy_client()
-    project = require_project()
+def list_alert_policies(limit: int = 100, environment: str = "") -> dict:
+    """List Cloud Monitoring alert policies and whether they are enabled.
+
+    Args:
+        limit: Maximum number of policies to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    env = resolve_environment(environment)
+    client = get_alert_policy_client(env)
+    project = env.project
     policies = []
     for p in client.list_alert_policies(name=f"projects/{project}"):
         policies.append(
@@ -132,13 +144,25 @@ def list_alert_policies(limit: int = 100) -> dict:
         )
         if len(policies) >= limit:
             break
-    return {"project": project, "count": len(policies), "alert_policies": policies}
+    return {
+        "environment": env.name,
+        "project": project,
+        "count": len(policies),
+        "alert_policies": policies,
+    }
 
 
-def list_uptime_checks(limit: int = 100) -> dict:
-    """List Cloud Monitoring uptime check configurations."""
-    client = get_uptime_client()
-    project = require_project()
+def list_uptime_checks(limit: int = 100, environment: str = "") -> dict:
+    """List Cloud Monitoring uptime check configurations.
+
+    Args:
+        limit: Maximum number of uptime checks to return.
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
+    """
+    env = resolve_environment(environment)
+    client = get_uptime_client(env)
+    project = env.project
     checks = []
     for c in client.list_uptime_check_configs(parent=f"projects/{project}"):
         monitored = c.monitored_resource.labels if c.monitored_resource else {}
@@ -152,7 +176,12 @@ def list_uptime_checks(limit: int = 100) -> dict:
         )
         if len(checks) >= limit:
             break
-    return {"project": project, "count": len(checks), "uptime_checks": checks}
+    return {
+        "environment": env.name,
+        "project": project,
+        "count": len(checks),
+        "uptime_checks": checks,
+    }
 
 
 def register(mcp) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..clients import get_error_stats_client
-from ..config import require_project
+from ..config import resolve_environment
 from ..formatting import first_line
 
 
@@ -22,7 +22,12 @@ def _period_for_hours(hours: int):
     return period.PERIOD_30_DAYS
 
 
-def list_error_groups(hours: int = 24, service: str = "", limit: int = 25) -> dict:
+def list_error_groups(
+    hours: int = 24,
+    service: str = "",
+    limit: int = 25,
+    environment: str = "",
+) -> dict:
     """List grouped application errors from Error Reporting with counts.
 
     Args:
@@ -30,11 +35,14 @@ def list_error_groups(hours: int = 24, service: str = "", limit: int = 25) -> di
             (1h, 6h, 1d, 1w, 30d). Default 24.
         service: Optional service name filter (Error Reporting "service" label).
         limit: Maximum number of error groups to return (most frequent first).
+        environment: Which configured GCP environment to query, e.g. 'staging'
+            or 'production'. Omit to use the default environment.
     """
     from google.cloud import errorreporting_v1beta1 as er
 
-    client = get_error_stats_client()
-    project = require_project()
+    env = resolve_environment(environment)
+    client = get_error_stats_client(env)
+    project = env.project
     limit = max(1, min(limit, 100))
 
     request: dict = {
@@ -63,7 +71,12 @@ def list_error_groups(hours: int = 24, service: str = "", limit: int = 25) -> di
         if len(groups) >= limit:
             break
 
-    return {"project": project, "count": len(groups), "error_groups": groups}
+    return {
+        "environment": env.name,
+        "project": project,
+        "count": len(groups),
+        "error_groups": groups,
+    }
 
 
 def register(mcp) -> None:
