@@ -18,6 +18,7 @@ move it. ``PLATFORM_MCP_LOG_LEVEL`` controls stderr verbosity.
 from __future__ import annotations
 
 import functools
+import inspect
 import json
 import logging
 import os
@@ -103,50 +104,76 @@ def _response_size(result: Any) -> int:
         return -1
 
 
+def _start_record(fn: Callable, kwargs: dict) -> dict:
+    return {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "tool": fn.__name__,
+        "arguments": _safe_arguments(kwargs),
+    }
+
+
+def _finish_ok(record: dict, fn: Callable, result: Any, started: float) -> None:
+    record["duration_ms"] = round((time.perf_counter() - started) * 1000, 1)
+    if isinstance(result, dict):
+        record["environment"] = result.get("environment")
+        record["project"] = result.get("project")
+        if "count" in result:
+            record["count"] = result["count"]
+    record["bytes"] = _response_size(result)
+    record["error"] = None
+    _write_audit(record)
+    logger.info(
+        "%s ok env=%s %sms %sB",
+        fn.__name__,
+        record.get("environment"),
+        record["duration_ms"],
+        record["bytes"],
+    )
+
+
+def _finish_error(record: dict, fn: Callable, exc: Exception, started: float) -> Exception:
+    record["duration_ms"] = round((time.perf_counter() - started) * 1000, 1)
+    record["error"] = type(exc).__name__
+    record["error_message"] = str(exc)[:500]
+    _write_audit(record)
+    logger.error("%s failed: %s: %s", fn.__name__, type(exc).__name__, exc)
+    # Replace opaque credential failures with something the agent can act on;
+    # anything else propagates unchanged.
+    return explain_exception(exc, record["arguments"].get("environment", ""))
+
+
 def instrument(fn: Callable) -> Callable:
     """Time, size and record one tool call, then re-raise anything it threw.
 
     ``functools.wraps`` keeps ``__doc__``, ``__annotations__`` and the
     signature intact, which is what FastMCP introspects to build the tool
-    schema -- the wrapper must stay invisible to the protocol.
+    schema -- the wrapper must stay invisible to the protocol. Async tools are
+    wrapped as async, so a coroutine is never recorded as a finished call.
     """
+    if inspect.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def async_wrapper(*args, **kwargs):
+            started = time.perf_counter()
+            record = _start_record(fn, kwargs)
+            try:
+                result = await fn(*args, **kwargs)
+            except Exception as exc:
+                raise _finish_error(record, fn, exc, started) from exc
+            _finish_ok(record, fn, result, started)
+            return result
+
+        return async_wrapper
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         started = time.perf_counter()
-        record: dict[str, Any] = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "tool": fn.__name__,
-            "arguments": _safe_arguments(kwargs),
-        }
+        record = _start_record(fn, kwargs)
         try:
             result = fn(*args, **kwargs)
         except Exception as exc:
-            record["duration_ms"] = round((time.perf_counter() - started) * 1000, 1)
-            record["error"] = type(exc).__name__
-            record["error_message"] = str(exc)[:500]
-            _write_audit(record)
-            logger.error("%s failed: %s: %s", fn.__name__, type(exc).__name__, exc)
-            # Replace opaque credential failures with something the agent can
-            # act on; anything else propagates unchanged.
-            raise explain_exception(exc, kwargs.get("environment", "")) from exc
-
-        record["duration_ms"] = round((time.perf_counter() - started) * 1000, 1)
-        if isinstance(result, dict):
-            record["environment"] = result.get("environment")
-            record["project"] = result.get("project")
-            if "count" in result:
-                record["count"] = result["count"]
-        record["bytes"] = _response_size(result)
-        record["error"] = None
-        _write_audit(record)
-        logger.info(
-            "%s ok env=%s %sms %sB",
-            fn.__name__,
-            record.get("environment"),
-            record["duration_ms"],
-            record["bytes"],
-        )
+            raise _finish_error(record, fn, exc, started) from exc
+        _finish_ok(record, fn, result, started)
         return result
 
     return wrapper

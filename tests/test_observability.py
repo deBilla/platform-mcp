@@ -106,3 +106,40 @@ def test_logging_is_configured_on_stderr_only(capsys):
     # session, so nothing in this package may write to it.
     assert captured.out == ""
     assert "sample_tool" in captured.err
+
+
+class TestAsyncTools:
+    """Async tools must be audited on completion, not on coroutine creation."""
+
+    @pytest.fixture
+    def anyio_backend(self):
+        return "asyncio"
+
+    @pytest.mark.anyio
+    async def test_a_successful_async_call_is_recorded(self, audit_file):
+        @instrument
+        async def sample_tool(environment: str = "") -> dict:
+            return {"environment": "staging", "count": 1}
+
+        assert await sample_tool(environment="staging") == {
+            "environment": "staging",
+            "count": 1,
+        }
+        (record,) = _records(audit_file)
+        assert record["tool"] == "sample_tool"
+        assert record["environment"] == "staging"
+        assert record["error"] is None
+        # A coroutine object would serialise to a useless size; a real result
+        # does not. This is what catches wrapping an async tool synchronously.
+        assert record["bytes"] > 0
+
+    @pytest.mark.anyio
+    async def test_an_async_failure_is_recorded_and_propagates(self, audit_file):
+        @instrument
+        async def failing_tool(environment: str = "") -> dict:
+            raise RuntimeError("async boom")
+
+        with pytest.raises(RuntimeError, match="async boom"):
+            await failing_tool(environment="staging")
+        (record,) = _records(audit_file)
+        assert record["error"] == "RuntimeError"

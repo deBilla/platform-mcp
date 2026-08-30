@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.2.0,<2",
+    "anyio>=4.0",
     "google-auth>=2.28.0",
     "google-cloud-logging>=3.9.0",
     "google-cloud-monitoring>=2.19.0",
@@ -39,7 +40,7 @@ Repository = "https://github.com/deBilla/platform-mcp"
 Issues = "https://github.com/deBilla/platform-mcp/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "anyio>=4.0"]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 platform-mcp = "platform_mcp.server:main"

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import anyio
 from google.api_core.exceptions import GoogleAPICallError, NotFound, PermissionDenied
+from mcp.server.fastmcp import Context
 
 from ..clients import get_asset_client, get_recommender_client
 from ..errors import PlatformMCPError
@@ -128,10 +130,11 @@ def list_recommendations(
     }
 
 
-def list_cost_recommendations(
+async def list_cost_recommendations(
     locations: str = "",
     limit_per_call: int = 50,
     environment: str = "",
+    ctx: Context | None = None,
 ) -> dict:
     """Aggregate GCP cost-optimization recommendations (idle/rightsizing/etc).
 
@@ -167,29 +170,51 @@ def list_cost_recommendations(
             "explicitly (e.g. 'us-central1,us-central1-a')." + detail
         )
 
+    def _pull(parent: str) -> list[dict]:
+        items = []
+        for rec in client.list_recommendations(parent=parent):
+            items.append(_format_recommendation(rec))
+            if len(items) >= limit_per_call:
+                break
+        return items
+
     findings = []
     skipped = 0
     total_savings = 0.0
+    total_calls = len(COST_RECOMMENDERS) * len(loc_list)
+    done = 0
     for recommender_id in COST_RECOMMENDERS:
         for location in loc_list:
             parent = (
                 f"projects/{project}/locations/{location}/recommenders/{recommender_id}"
             )
             try:
-                pulled = 0
-                for rec in client.list_recommendations(parent=parent):
-                    item = _format_recommendation(rec)
+                # The client is synchronous; running it inline would block the
+                # event loop and stop progress notifications from being sent.
+                pulled = await anyio.to_thread.run_sync(_pull, parent)
+                for item in pulled:
                     item["recommender"] = recommender_id
                     item["location"] = location
                     findings.append(item)
                     if item["monthly_cost_impact"]:
                         total_savings += item["monthly_cost_impact"]
-                    pulled += 1
-                    if pulled >= limit_per_call:
-                        break
             except (NotFound, PermissionDenied, GoogleAPICallError):
                 skipped += 1
-                continue
+            done += 1
+            if ctx is not None:
+                await ctx.report_progress(
+                    done, total_calls, f"{recommender_id.split('.')[-1]} in {location}"
+                )
+
+    # Tell the model about partial coverage rather than leaving it as a number
+    # in the payload it may not read: an incomplete scan must not be summarised
+    # as "no savings available".
+    if ctx is not None and skipped:
+        await ctx.warning(
+            f"{skipped} of {total_calls} recommender/location combinations could "
+            "not be read (API disabled or permission denied). These results are "
+            "partial; do not report them as a complete picture."
+        )
 
     findings.sort(key=lambda x: x.get("monthly_cost_impact") or 0)
     # Savings are negative cost deltas; report as a positive number.
