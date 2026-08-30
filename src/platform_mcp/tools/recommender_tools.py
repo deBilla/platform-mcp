@@ -5,6 +5,8 @@ from __future__ import annotations
 from google.api_core.exceptions import GoogleAPICallError, NotFound, PermissionDenied
 
 from ..clients import get_asset_client, get_recommender_client
+from ..errors import PlatformMCPError
+from ..registration import register_tool
 from ..config import Environment, resolve_environment
 from ..formatting import money_to_float, parse_list_arg, truncate
 
@@ -38,8 +40,13 @@ def _region_of(location: str) -> str | None:
     return None
 
 
-def _discover_locations(env: Environment) -> list[str]:
-    """Find zones/regions where the project has cost-relevant resources."""
+def _discover_locations(env: Environment) -> tuple[list[str], str]:
+    """Find zones/regions holding cost-relevant resources.
+
+    Returns the locations and an error string. A failure here used to be
+    swallowed, which made a permissions problem look like a project with
+    nothing to optimize -- the worst possible answer from a cost tool.
+    """
     locations: set[str] = set()
     try:
         client = get_asset_client(env)
@@ -58,9 +65,9 @@ def _discover_locations(env: Environment) -> list[str]:
             region = _region_of(loc)
             if region:
                 locations.add(region)
-    except (GoogleAPICallError, Exception):
-        pass
-    return sorted(locations)
+    except GoogleAPICallError as exc:
+        return sorted(locations), f"{type(exc).__name__}: {str(exc)[:200]}"
+    return sorted(locations), ""
 
 
 def _format_recommendation(rec) -> dict:
@@ -143,19 +150,22 @@ def list_cost_recommendations(
     client = get_recommender_client(env)
     project = env.project
 
-    loc_list = parse_list_arg(locations) or _discover_locations(env)
+    loc_list = parse_list_arg(locations)
+    discovery_error = ""
     if not loc_list:
-        return {
-            "environment": env.name,
-            "project": project,
-            "status": "no_locations",
-            "message": (
-                "Could not determine any resource locations to scan. Pass "
-                "'locations' explicitly (e.g. 'us-central1,us-central1-a'), and "
-                "ensure the Cloud Asset API is enabled for auto-discovery."
-            ),
-            "recommendations": [],
-        }
+        loc_list, discovery_error = _discover_locations(env)
+    if not loc_list:
+        detail = (
+            f" Location discovery failed with: {discovery_error}"
+            if discovery_error
+            else " Ensure the Cloud Asset API is enabled for auto-discovery."
+        )
+        raise PlatformMCPError(
+            f"environment '{env.name}': could not determine any resource "
+            "locations to scan, so no recommendations could be gathered. This "
+            "is not the same as having no savings available. Pass 'locations' "
+            "explicitly (e.g. 'us-central1,us-central1-a')." + detail
+        )
 
     findings = []
     skipped = 0
@@ -187,6 +197,7 @@ def list_cost_recommendations(
         "environment": env.name,
         "project": project,
         "locations_scanned": loc_list,
+        "location_discovery_error": discovery_error or None,
         "count": len(findings),
         "skipped_calls": skipped,
         "estimated_monthly_savings": round(-total_savings, 2),
@@ -195,5 +206,5 @@ def list_cost_recommendations(
 
 
 def register(mcp) -> None:
-    mcp.tool()(list_cost_recommendations)
-    mcp.tool()(list_recommendations)
+    register_tool(mcp, list_cost_recommendations)
+    register_tool(mcp, list_recommendations)

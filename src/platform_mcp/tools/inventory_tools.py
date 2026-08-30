@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..clients import get_asset_client
+from ..registration import register_tool
 from ..config import resolve_environment
 from ..formatting import parse_list_arg
 
@@ -120,8 +121,8 @@ def list_sql_instances(limit: int = 100, environment: str = "") -> dict:
 
 
 def register(mcp) -> None:
-    mcp.tool()(search_assets)
-    mcp.tool()(list_compute_instances)
-    mcp.tool()(list_cloud_run_services)
-    mcp.tool()(list_gke_clusters)
-    mcp.tool()(list_sql_instances)
+    register_tool(mcp, search_assets)
+    register_tool(mcp, list_compute_instances)
+    register_tool(mcp, list_cloud_run_services)
+    register_tool(mcp, list_gke_clusters)
+    register_tool(mcp, list_sql_instances)

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.deBilla/platform-mcp",
+  "description": "Read-only GCP tools for debugging incidents and finding cost savings",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/deBilla/platform-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "platform-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PLATFORM_MCP_ENVIRONMENTS",
+          "description": "JSON map of environment name to GCP settings. Omit when using a config file at ~/.config/platform-mcp/config.toml.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PLATFORM_MCP_DEFAULT_ENVIRONMENT",
+          "description": "Environment used when a tool call omits the environment argument.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PLATFORM_MCP_CONFIG",
+          "description": "Path to a TOML config file, overriding ~/.config/platform-mcp/config.toml.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "PLATFORM_MCP_AUDIT_LOG",
+          "description": "Path for the JSONL tool-call audit log, or 'off' to disable it.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

@@ -5,8 +5,13 @@ from __future__ import annotations
 import time
 
 from ..clients import get_alert_policy_client, get_metric_client, get_uptime_client
+from ..registration import register_tool
 from ..config import resolve_environment
 from ..formatting import parse_duration_seconds, truncate
+
+# Points kept per series. A 1h window at 1m alignment is 60 points per series
+# and query_metric can return 50 series, which is far more than an answer needs.
+_MAX_POINTS = 12
 
 _ALIGNERS = {
     "MEAN": "ALIGN_MEAN",
@@ -65,8 +70,14 @@ def query_metric(
         {"end_time": {"seconds": now}, "start_time": {"seconds": now - window_s}}
     )
     align_s = parse_duration_seconds(alignment_period, default_seconds=300)
+    # Falling back to MEAN on an unrecognised aligner while echoing the
+    # requested name back would report a mean as if it were a p99.
+    if aligner.upper() not in _ALIGNERS:
+        raise ValueError(
+            f"aligner must be one of {sorted(_ALIGNERS)}, got '{aligner}'."
+        )
     aligner_enum = getattr(
-        monitoring_v3.Aggregation.Aligner, _ALIGNERS.get(aligner.upper(), "ALIGN_MEAN")
+        monitoring_v3.Aggregation.Aligner, _ALIGNERS[aligner.upper()]
     )
     aggregation = monitoring_v3.Aggregation(
         {"alignment_period": {"seconds": align_s}, "per_series_aligner": aligner_enum}
@@ -86,9 +97,12 @@ def query_metric(
     )
 
     series = []
+    truncated_series = 0
     for ts in results:
         points = []
-        for p in ts.points[:12]:
+        if len(ts.points) > _MAX_POINTS:
+            truncated_series += 1
+        for p in ts.points[:_MAX_POINTS]:
             # Pick the field actually set in the TypedValue oneof so a real 0
             # isn't lost to truthiness (critical for gauges like DLQ depth).
             pb = p.value._pb if hasattr(p.value, "_pb") else p.value
@@ -105,6 +119,8 @@ def query_metric(
             {
                 "resource": dict(ts.resource.labels),
                 "metric_labels": dict(ts.metric.labels),
+                "points_returned": len(points),
+                "points_total": len(ts.points),
                 "points": points,
             }
         )
@@ -117,6 +133,10 @@ def query_metric(
         "metric_type": metric_type,
         "aligner": aligner.upper(),
         "series_count": len(series),
+        # Each series is capped so a wide query cannot flood the context. Say
+        # so, rather than letting a clipped series read as the whole window.
+        "points_per_series_cap": _MAX_POINTS,
+        "series_truncated": truncated_series,
         "series": series,
     }
 
@@ -185,6 +205,6 @@ def list_uptime_checks(limit: int = 100, environment: str = "") -> dict:
 
 
 def register(mcp) -> None:
-    mcp.tool()(query_metric)
-    mcp.tool()(list_alert_policies)
-    mcp.tool()(list_uptime_checks)
+    register_tool(mcp, query_metric)
+    register_tool(mcp, list_alert_policies)
+    register_tool(mcp, list_uptime_checks)

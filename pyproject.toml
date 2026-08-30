@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,8 +9,20 @@ description = "Read-only GCP platform-engineer MCP server for debugging and cost
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+authors = [{ name = "Dimuthu Bhathiya" }]
+keywords = ["mcp", "model-context-protocol", "gcp", "google-cloud", "sre", "finops", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
-    "mcp[cli]>=1.2.0",
+    "mcp>=1.2.0,<2",
     "google-auth>=2.28.0",
     "google-cloud-logging>=3.9.0",
     "google-cloud-monitoring>=2.19.0",
@@ -21,8 +33,20 @@ dependencies = [
     "google-cloud-bigquery>=3.19.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/deBilla/platform-mcp"
+Repository = "https://github.com/deBilla/platform-mcp"
+Issues = "https://github.com/deBilla/platform-mcp/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "anyio>=4.0"]
+
 [project.scripts]
 platform-mcp = "platform_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

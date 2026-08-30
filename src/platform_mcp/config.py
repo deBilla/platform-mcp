@@ -31,8 +31,13 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
+
+# Where the config file lives when PLATFORM_MCP_CONFIG does not name one.
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "platform-mcp" / "config.toml"
 
 _PROJECT_ENV_VARS = (
     "GCP_PROJECT",
@@ -154,17 +159,67 @@ def _parse_registry(raw: str) -> tuple[Environment, ...]:
     return tuple(environments)
 
 
+def config_path() -> Path:
+    """Path of the config file, whether or not it exists."""
+    override = os.environ.get("PLATFORM_MCP_CONFIG", "").strip()
+    return Path(override).expanduser() if override else DEFAULT_CONFIG_PATH
+
+
+def _load_config_file() -> dict:
+    """Read the TOML config file, or return an empty mapping if there is none.
+
+    A config file is far kinder than a JSON blob squeezed into an environment
+    variable, and it can be committed and shared across a team. Environment
+    variables still win, so an existing setup keeps working and a one-off
+    override needs no edit.
+    """
+    path = config_path()
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        raise RuntimeError(f"Could not read config file {path}: {exc}") from exc
+    try:
+        parsed = tomllib.loads(raw.decode("utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"Config file {path} is not valid TOML: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"Config file {path} must define a TOML table.")
+    return parsed
+
+
+def _environments_from_file(file_config: dict) -> tuple[Environment, ...]:
+    table = file_config.get("environments")
+    if not table:
+        return ()
+    if not isinstance(table, dict):
+        raise RuntimeError(
+            "The [environments] section of the config file must be a table of "
+            'named environments, e.g. [environments.staging].'
+        )
+    # Reuse the JSON parser so file and environment variable cannot drift apart.
+    return _parse_registry(json.dumps(table))
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    limit_raw = os.environ.get("PLATFORM_MCP_DEFAULT_LIMIT", "50")
+    file_config = _load_config_file()
+
+    limit_raw = os.environ.get("PLATFORM_MCP_DEFAULT_LIMIT", "").strip()
+    if not limit_raw:
+        limit_raw = str(file_config.get("default_limit", 50))
     try:
         default_limit = max(1, int(limit_raw))
     except ValueError:
         default_limit = 50
 
     raw_registry = os.environ.get("PLATFORM_MCP_ENVIRONMENTS", "").strip()
+    file_environments = _environments_from_file(file_config)
     if raw_registry:
         environments = _parse_registry(raw_registry)
+    elif file_environments:
+        environments = file_environments
     else:
         environments = (
             Environment(
@@ -176,6 +231,8 @@ def get_settings() -> Settings:
         )
 
     requested_default = os.environ.get("PLATFORM_MCP_DEFAULT_ENVIRONMENT", "").strip().lower()
+    if not requested_default:
+        requested_default = str(file_config.get("default_environment", "")).strip().lower()
     known = {e.name for e in environments}
     if requested_default and requested_default not in known:
         raise RuntimeError(

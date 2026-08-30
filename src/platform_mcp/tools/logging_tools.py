@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..clients import get_logging_client
+from ..registration import register_tool
 from ..config import resolve_environment
 from ..formatting import parse_duration_seconds, truncate
 
@@ -110,5 +111,5 @@ def get_recent_errors(
 
 
 def register(mcp) -> None:
-    mcp.tool()(query_logs)
-    mcp.tool()(get_recent_errors)
+    register_tool(mcp, query_logs)
+    register_tool(mcp, get_recent_errors)

@@ -7,6 +7,7 @@ instead of a guess.
 
 from __future__ import annotations
 
+from ..registration import register_tool
 from ..config import get_settings
 
 
@@ -37,4 +38,4 @@ def list_environments() -> dict:
 
 
 def register(mcp) -> None:
-    mcp.tool()(list_environments)
+    register_tool(mcp, list_environments, open_world=False)

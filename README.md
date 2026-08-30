@@ -1,5 +1,8 @@
 # platform-mcp
 
+<!-- Identifier for the official MCP registry; must match server.json. -->
+mcp-name: io.github.deBilla/platform-mcp
+
 A **read-only** [Model Context Protocol](https://modelcontextprotocol.io) server that turns an AI agent (Claude Code, Claude Desktop, or any MCP client) into a GCP platform engineer. Point it at your Google Cloud projects and ask it to investigate incidents, take inventory, and surface cost-optimization opportunities — all without any ability to change your infrastructure.
 
 > **Observation only.** No tool in this server mutates state. Combined with a viewer-only identity (below), that gives you a hard, defense-in-depth guarantee that an agent can look but never touch.
@@ -48,11 +51,29 @@ echoes back the `environment` and `project` it came from.
 ## Install
 
 ```bash
+uvx platform-mcp          # no install step; uv fetches it on demand
+pipx install platform-mcp # or keep it on PATH
+```
+
+From a checkout, for development:
+
+```bash
 git clone https://github.com/deBilla/platform-mcp.git
 cd platform-mcp
 python3 -m venv .venv
-./.venv/bin/pip install -e .
+./.venv/bin/pip install -e ".[dev]"
 ```
+
+### Check your setup
+
+```bash
+platform-mcp doctor
+```
+
+This checks, for every configured environment, that Application Default
+Credentials exist, that the read-only service account can be impersonated, that
+a real API read succeeds, and that the billing export is readable — printing the
+exact command to fix whatever fails. Run it before reporting a problem.
 
 ## One-time GCP setup
 
@@ -134,14 +155,21 @@ to reach production. Grant each one viewer-only access to its project alone.
 
 ## Configuration
 
-Copy the example config and fill in your values:
+The friendliest option is a config file, which keeps project ids and service
+account emails out of every client config you own:
 
 ```bash
-cp .mcp.json.example .mcp.json
+mkdir -p ~/.config/platform-mcp
+cp config.toml.example ~/.config/platform-mcp/config.toml
+$EDITOR ~/.config/platform-mcp/config.toml
 ```
 
-`.mcp.json` is git-ignored, so your project ids and service-account emails stay
-local. Environment variables it (or your shell) can set:
+With that in place, registering the server takes no environment variables at
+all. Point `PLATFORM_MCP_CONFIG` elsewhere to use a different file — a copy
+committed to your infrastructure repo, for instance.
+
+Environment variables still work and always win over the file, so an existing
+setup keeps running unchanged and a one-off override needs no edit:
 
 | Variable | Purpose |
 | --- | --- |
@@ -187,30 +215,76 @@ behaves as before, exposing one environment named `default`:
 
 ## Register with a client
 
-**Claude Code / Claude Desktop** — add the block from `.mcp.json.example` to your
-MCP config (`.mcp.json` in a project for Claude Code, or
-`claude_desktop_config.json` for Desktop), pointing `command` at the venv's
-console script so no global install is needed:
+**Claude Code** — with a config file in place, this is the whole thing:
+
+```bash
+claude mcp add platform-mcp --scope user -- uvx platform-mcp
+```
+
+**Claude Desktop** — the same command and args in `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "platform-mcp": {
-      "command": "/absolute/path/to/platform-mcp/.venv/bin/platform-mcp",
-      "env": {
-        "PLATFORM_MCP_DEFAULT_ENVIRONMENT": "staging",
-        "PLATFORM_MCP_ENVIRONMENTS": "{\"staging\":{\"project\":\"YOUR_STAGING_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_STAGING_PROJECT_ID.iam.gserviceaccount.com\"},\"production\":{\"project\":\"YOUR_PROD_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_PROD_PROJECT_ID.iam.gserviceaccount.com\"}}"
-      }
+      "command": "uvx",
+      "args": ["platform-mcp"]
     }
   }
 }
 ```
 
+Without a config file, add the environment variables from
+`.mcp.json.example` to either form.
+
+### Skip the approval prompt
+
+Every tool here is read-only, so approving each call individually adds nothing.
+Allow the whole server once, in Claude Code settings:
+
+```json
+{ "permissions": { "allow": ["mcp__platform-mcp__*"] } }
+```
+
+The glob must sit after a literal `mcp__<server>__` prefix — an unanchored
+pattern like `mcp__*` is ignored with a warning and approves nothing.
+
 **MCP Inspector** — for interactive testing:
 
 ```bash
-./.venv/bin/mcp dev src/platform_mcp/server.py
+uvx --with 'mcp[cli]' mcp dev src/platform_mcp/server.py
 ```
+
+## Observability
+
+Every tool call appends one JSON line to `~/.local/state/platform-mcp/audit.jsonl`:
+
+```json
+{"ts":"2026-08-30T18:20:11+0800","tool":"query_logs","environment":"production",
+ "project":"my-app","duration_ms":412,"count":50,"bytes":18422,"error":null}
+```
+
+Free-text arguments are recorded by name only — a Cloud Logging filter can carry
+user ids from the logs being searched, and the audit file must not become a
+second copy of that. Set `PLATFORM_MCP_AUDIT_LOG` to another path, or to `off`.
+
+Diagnostic logs go to **stderr** (`PLATFORM_MCP_LOG_LEVEL` to adjust); in stdio
+transport stdout carries the protocol, so nothing else may be written there. In
+Claude Code, read them with `claude --debug=mcp`.
+
+For a record that does not depend on this server at all, enable **Data Access
+audit logs** in GCP for the read-only service accounts. Token minting already
+appears in Admin Activity logs without any configuration.
+
+## Development
+
+```bash
+./.venv/bin/python -m pytest
+```
+
+The suite runs entirely in-process against an in-memory MCP client — no
+subprocess, no network, no GCP credentials — and covers environment resolution,
+the tool contract, annotations, error translation and the audit log.
 
 ## Notes
 
@@ -219,9 +293,13 @@ console script so no global install is needed:
   staging and production mid-conversation costs one client construction each.
 - Cost recommenders are zonal/regional; `list_cost_recommendations` auto-discovers
   the locations where you have resources (via Asset Inventory) and fans out,
-  skipping locations and recommenders that are empty or unavailable.
+  skipping locations and recommenders that are empty or unavailable. It reports
+  `skipped_calls` and fails loudly if it cannot discover any location, because
+  "I could not look" and "there is nothing to save" must not look alike.
 - `get_cost_breakdown` uses parameterized BigQuery queries with a whitelisted set
-  of group-by columns.
+  of group-by columns, and filters to the selected environment's project. A
+  billing export covers the whole billing account, so pass `all_projects=true`
+  when you want account-wide totals.
 
 ## License
 

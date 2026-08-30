@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from . import __version__
 from .config import describe_environments
+from .observability import configure_logging, logger
 from .tools import (
     cost_tools,
     environment_tools,
@@ -59,6 +61,32 @@ for module in (
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="platform-mcp",
+        description=(
+            "Read-only GCP MCP server. With no arguments it serves the Model "
+            "Context Protocol over stdio, which is how an MCP client starts it."
+        ),
+    )
+    parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["serve", "doctor"],
+        default="serve",
+        help="'serve' (default) runs the server; 'doctor' checks GCP access.",
+    )
+    args = parser.parse_args()
+
+    if args.command == "doctor":
+        from .diagnostics import run_doctor
+
+        raise SystemExit(run_doctor())
+
+    configure_logging()
+    logger.info("starting platform-mcp %s", __version__)
     mcp.run()
 
 

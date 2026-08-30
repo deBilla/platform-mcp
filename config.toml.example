@@ -1,0 +1,43 @@
+# platform-mcp configuration.
+#
+# Copy to ~/.config/platform-mcp/config.toml (or point PLATFORM_MCP_CONFIG at
+# it). With this file in place, adding the server to a client needs no
+# environment variables at all:
+#
+#     claude mcp add platform-mcp -- uvx platform-mcp
+#
+# Every setting here can be overridden by the matching environment variable,
+# so a shared committed file plus a local override works fine.
+
+# Environment used when a tool call omits the `environment` argument.
+# Prefer staging, so an unqualified question never reaches production.
+default_environment = "staging"
+
+# Default max rows for list-style tools.
+default_limit = 50
+
+
+[environments.staging]
+project = "my-app-staging"
+
+# Read-only service account to impersonate. This is what makes "read-only" a
+# property of the identity rather than a promise about the code: point it at a
+# viewer-only account and no tool can mutate anything, whatever your own roles
+# allow. Each person using the server needs
+# roles/iam.serviceAccountTokenCreator on this account.
+impersonate = "platform-mcp-ro@my-app-staging.iam.gserviceaccount.com"
+
+
+[environments.production]
+project = "my-app"
+impersonate = "platform-mcp-ro@my-app.iam.gserviceaccount.com"
+
+# Fully-qualified BigQuery billing export table, required by get_cost_breakdown.
+# The export usually lives in its own project, so the impersonated account needs
+# roles/bigquery.jobUser on the project above AND roles/bigquery.dataViewer on
+# the dataset below. Run `platform-mcp doctor` to check both.
+billing_export_table = "my-billing-project.billing.gcp_billing_export_v1_XXXXXX"
+
+# Extra names the agent may use for this environment. 'prod', 'prd' and 'live'
+# are understood already.
+aliases = ["prod-eu"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..clients import get_error_stats_client
+from ..registration import register_tool
 from ..config import resolve_environment
 from ..formatting import first_line
 
@@ -74,10 +75,15 @@ def list_error_groups(
     return {
         "environment": env.name,
         "project": project,
+        # Error Reporting only accepts fixed periods, so the window asked for is
+        # rounded up. Report both: 48 hours of interest becomes a week of data,
+        # and an answer that does not say so overstates the time range.
+        "requested_hours": hours,
+        "period_applied": _period_for_hours(hours).name,
         "count": len(groups),
         "error_groups": groups,
     }
 
 
 def register(mcp) -> None:
-    mcp.tool()(list_error_groups)
+    register_tool(mcp, list_error_groups)

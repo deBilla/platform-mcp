@@ -1,10 +1,35 @@
 {
+  "_comment": [
+    "Two ways to run platform-mcp. Preferred: install the published package and",
+    "keep configuration in ~/.config/platform-mcp/config.toml (see",
+    "config.toml.example), which reduces this file to the block below.",
+    "Add \"allow\": [\"mcp__platform-mcp__*\"] to your Claude Code permissions to",
+    "skip the approval prompt on every call -- every tool here is read-only."
+  ],
   "mcpServers": {
     "platform-mcp": {
-      "command": "/absolute/path/to/platform-mcp/.venv/bin/platform-mcp",
-      "env": {
-        "PLATFORM_MCP_DEFAULT_ENVIRONMENT": "staging",
-        "PLATFORM_MCP_ENVIRONMENTS": "{\"staging\":{\"project\":\"YOUR_STAGING_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_STAGING_PROJECT_ID.iam.gserviceaccount.com\"},\"production\":{\"project\":\"YOUR_PROD_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_PROD_PROJECT_ID.iam.gserviceaccount.com\",\"billing_export_table\":\"YOUR_PROD_PROJECT_ID.billing.gcp_billing_export_v1_XXXXXX\"}}"
+      "command": "uvx",
+      "args": ["platform-mcp"]
+    }
+  },
+
+  "_alternative_without_a_config_file": {
+    "mcpServers": {
+      "platform-mcp": {
+        "command": "uvx",
+        "args": ["platform-mcp"],
+        "env": {
+          "PLATFORM_MCP_DEFAULT_ENVIRONMENT": "staging",
+          "PLATFORM_MCP_ENVIRONMENTS": "{\"staging\":{\"project\":\"YOUR_STAGING_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_STAGING_PROJECT_ID.iam.gserviceaccount.com\"},\"production\":{\"project\":\"YOUR_PROD_PROJECT_ID\",\"impersonate\":\"platform-mcp-ro@YOUR_PROD_PROJECT_ID.iam.gserviceaccount.com\",\"billing_export_table\":\"YOUR_BILLING_PROJECT.billing.gcp_billing_export_v1_XXXXXX\"}}"
+        }
+      }
+    }
+  },
+
+  "_running_from_a_checkout": {
+    "mcpServers": {
+      "platform-mcp": {
+        "command": "/absolute/path/to/platform-mcp/.venv/bin/platform-mcp"
       }
     }
   }
