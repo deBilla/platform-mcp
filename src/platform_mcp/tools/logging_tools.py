@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..clients import get_logging_client
 from ..registration import register_tool
 from ..config import resolve_environment
-from ..formatting import parse_duration_seconds, truncate
+from ..formatting import parse_duration_seconds, truncate_reported
 
 
 def _since_timestamp(freshness: str) -> str:
@@ -17,28 +18,45 @@ def _since_timestamp(freshness: str) -> str:
     return since.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _payload_text(entry: Any) -> str:
+# Log messages carry stack traces and structured context, which is the whole
+# diagnostic value of the tool, so the per-message cap is generous.
+_MESSAGE_LIMIT = 1500
+
+# The real constraint is the agent's context window, not any single message, so
+# the response is bounded as a whole rather than by clipping every entry to fit
+# the worst case. Short messages therefore yield many entries and long ones
+# yield fewer -- and the caller is told when the budget, not the query, ended
+# the list. Roughly 10k tokens.
+_MAX_PAYLOAD_CHARS = 40_000
+
+
+def _payload_text(entry: Any) -> tuple[str, int]:
     payload = getattr(entry, "payload", None)
     if payload is None:
         payload = getattr(entry, "payload_json", None) or getattr(entry, "payload_pb", None)
     if isinstance(payload, dict):
         # Structured logs usually carry the human message under "message".
         msg = payload.get("message") or payload.get("msg")
-        return truncate(msg if msg else payload)
-    return truncate(payload)
+        return truncate_reported(msg if msg else payload, _MESSAGE_LIMIT)
+    return truncate_reported(payload, _MESSAGE_LIMIT)
 
 
 def _format_entry(entry: Any) -> dict:
     resource = getattr(entry, "resource", None)
     resource_type = getattr(resource, "type", None) if resource else None
     ts = getattr(entry, "timestamp", None)
-    return {
+    message, original_length = _payload_text(entry)
+    row = {
         "timestamp": ts.isoformat() if ts else None,
         "severity": str(getattr(entry, "severity", "") or ""),
         "log": (getattr(entry, "log_name", "") or "").split("/")[-1],
         "resource_type": resource_type,
-        "message": _payload_text(entry),
+        "message": message,
     }
+    if original_length > _MESSAGE_LIMIT:
+        row["message_truncated"] = True
+        row["message_full_length"] = original_length
+    return row
 
 
 def query_logs(
@@ -72,14 +90,36 @@ def query_logs(
         max_results=limit,
         page_size=min(limit, 500),
     )
-    rows = [_format_entry(e) for e in entries]
-    return {
+    rows = []
+    used = 0
+    stopped_for_size = False
+    for entry in entries:
+        row = _format_entry(entry)
+        size = len(json.dumps(row, default=str))
+        if rows and used + size > _MAX_PAYLOAD_CHARS:
+            stopped_for_size = True
+            break
+        rows.append(row)
+        used += size
+
+    result = {
         "environment": env.name,
         "project": env.project,
         "filter": full_filter,
         "count": len(rows),
         "entries": rows,
     }
+    if stopped_for_size:
+        # Say so, rather than letting a size-limited page look like the full
+        # set of matches for the window.
+        result["stopped_for_size"] = True
+        result["requested_limit"] = limit
+        result["note"] = (
+            f"Returned {len(rows)} of up to {limit} entries to stay within a "
+            "response size budget. Narrow the filter or shorten the freshness "
+            "window to see more of what matched."
+        )
+    return result
 
 
 def get_recent_errors(

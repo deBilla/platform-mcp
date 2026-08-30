@@ -13,6 +13,23 @@ def truncate(text: Any, limit: int = 400) -> str:
     return s[: limit - 1] + "…"
 
 
+def truncate_reported(text: Any, limit: int) -> tuple[str, int]:
+    """Truncate, and report the original length so the caller can say it did.
+
+    A measurement run over live staging logs found 96% of error messages hitting
+    the cap, with the median length sitting exactly on it -- the limit, not the
+    content, was deciding what the agent saw. Silently clipping a stack trace
+    removes the part that identifies the fault, so callers surface the original
+    length and let the agent decide whether to go and fetch the whole entry.
+    """
+    s = "" if text is None else str(text)
+    s = s.strip()
+    original = len(s)
+    if original <= limit:
+        return s, original
+    return s[: limit - 1] + "…", original
+
+
 def first_line(text: Any, limit: int = 300) -> str:
     s = "" if text is None else str(text)
     line = s.strip().splitlines()[0] if s.strip() else ""
