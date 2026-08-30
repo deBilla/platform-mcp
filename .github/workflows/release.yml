@@ -51,3 +51,39 @@ jobs:
           path: dist/
 
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  registry:
+    # Runs after PyPI, because the registry only stores a pointer -- it
+    # resolves the package on PyPI and would 404 on a version not yet there.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # GitHub OIDC, so there is no registry token to store
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify server.json matches the release
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          python - "$tag" <<'PY'
+          import json, sys
+          tag = sys.argv[1]
+          d = json.load(open("server.json"))
+          versions = {d["version"]} | {p["version"] for p in d.get("packages", [])}
+          if versions != {tag}:
+              sys.exit(f"server.json has {sorted(versions)}, expected {tag}")
+          print(f"server.json is at {tag}")
+          PY
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v${PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version
+        env:
+          PUBLISHER_VERSION: 1.8.1
+
+      - name: Publish to the MCP registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

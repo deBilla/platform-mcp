@@ -1,8 +1,10 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.deBilla/platform-mcp",
+  "title": "GCP Platform Engineer",
   "description": "Read-only GCP tools for debugging incidents and finding cost savings",
-  "version": "0.2.0",
+  "version": "0.3.0",
+  "websiteUrl": "https://debilla.github.io/platform-mcp/",
   "repository": {
     "url": "https://github.com/deBilla/platform-mcp",
     "source": "github"
@@ -11,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "platform-mcp",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "transport": {
         "type": "stdio"
       },
