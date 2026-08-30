@@ -112,7 +112,18 @@ roles/bigquery.dataViewer    # only for get_cost_breakdown
 roles/bigquery.jobUser       # only for get_cost_breakdown
 ```
 
-**3. (Recommended) Use a dedicated read-only service account** instead of your login:
+**3. (Recommended) Use a dedicated read-only service account** instead of your
+login. The script does every step below, is safe to re-run, and prints the
+config stanza at the end:
+
+```bash
+./scripts/setup-service-account.sh \
+  --project YOUR_PROJECT_ID \
+  --user you@example.com \
+  --billing-dataset YOUR_BILLING_PROJECT:billing   # optional
+```
+
+Or by hand:
 
 ```bash
 PROJECT=YOUR_PROJECT_ID
@@ -121,9 +132,10 @@ gcloud iam service-accounts create platform-mcp-ro \
 
 SA=platform-mcp-ro@$PROJECT.iam.gserviceaccount.com
 for ROLE in roles/viewer roles/logging.viewer roles/monitoring.viewer \
-  roles/errorreporting.viewer roles/recommender.viewer roles/cloudasset.viewer; do
+  roles/errorreporting.viewer roles/recommender.viewer roles/cloudasset.viewer \
+  roles/bigquery.jobUser; do
   gcloud projects add-iam-policy-binding $PROJECT \
-    --member="serviceAccount:$SA" --role="$ROLE"
+    --member="serviceAccount:$SA" --role="$ROLE" --condition=None
 done
 
 # Let your own login impersonate it (no key file to manage):
@@ -131,6 +143,22 @@ gcloud iam service-accounts add-iam-policy-binding $SA \
   --member="user:you@example.com" \
   --role="roles/iam.serviceAccountTokenCreator" --project $PROJECT
 ```
+
+**The grant everyone forgets.** `roles/bigquery.jobUser` above only lets the
+account *start* a query; it grants no access to any data. A billing export
+almost always lives in a **different project**, so the account also needs read
+on that dataset. Without it `get_cost_breakdown` returns 403 while every other
+tool works, which reads like a bug in the tool rather than a missing grant:
+
+```bash
+bq add-iam-policy-binding \
+  --member="serviceAccount:$SA" --role=roles/bigquery.dataViewer \
+  YOUR_BILLING_PROJECT:billing
+```
+
+If you lack admin on the billing project, that one line is what to send to
+someone who has it. `platform-mcp doctor` checks it and says which side is
+missing.
 
 Then reference it as that environment's `impersonate` value in
 `PLATFORM_MCP_ENVIRONMENTS` (preferred — no key file), or point at a downloaded
