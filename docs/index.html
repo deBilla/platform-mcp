@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>platform-mcp — read-only GCP tools for AI agents</title>
+<meta name="description" content="A read-only Model Context Protocol server that lets an AI agent debug incidents, inventory resources and find cost savings across your Google Cloud projects — without any ability to change them.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --ink:        #101822;
+  --ink-2:      #33414f;
+  --ink-3:      #5d6b7a;
+  --ground:     #f7f8f7;
+  --surface:    #ffffff;
+  --surface-2:  #eef1f0;
+  --rule:       #d9dedd;
+  --accent:     #0f6d6a;
+  --accent-ink: #0b4f4d;
+  --accent-wash:#dcecea;
+  --good:       #1c6b3f;
+  --warn:       #8a5a10;
+  --bad:        #9c2f2a;
+  --code-bg:    #101822;
+  --code-fg:    #e3e9e7;
+  --code-dim:   #8fa0a0;
+  --shadow:     0 1px 2px rgba(16,24,34,.06), 0 8px 24px -16px rgba(16,24,34,.22);
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink:        #e6ecea;
+    --ink-2:      #b3bfbd;
+    --ink-3:      #8493a0;
+    --ground:     #0c1116;
+    --surface:    #131a21;
+    --surface-2:  #1a232b;
+    --rule:       #26313a;
+    --accent:     #5cc9c0;
+    --accent-ink: #8fded6;
+    --accent-wash:#12312f;
+    --good:       #62c48c;
+    --warn:       #d8a441;
+    --bad:        #e2726a;
+    --code-bg:    #080c10;
+    --code-fg:    #dfe7e4;
+    --code-dim:   #6d7f7f;
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  --ink:        #e6ecea;
+  --ink-2:      #b3bfbd;
+  --ink-3:      #8493a0;
+  --ground:     #0c1116;
+  --surface:    #131a21;
+  --surface-2:  #1a232b;
+  --rule:       #26313a;
+  --accent:     #5cc9c0;
+  --accent-ink: #8fded6;
+  --accent-wash:#12312f;
+  --good:       #62c48c;
+  --warn:       #d8a441;
+  --bad:        #e2726a;
+  --code-bg:    #080c10;
+  --code-fg:    #dfe7e4;
+  --code-dim:   #6d7f7f;
+  --shadow:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 16px/1.65 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+/* ---------- masthead ---------- */
+.masthead {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 1rem;
+  padding: .7rem clamp(1rem, 4vw, 2.5rem);
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.wordmark {
+  font: 600 15px/1 var(--mono);
+  letter-spacing: -.02em; color: var(--ink); text-decoration: none;
+  display: inline-flex; align-items: center; gap: .5rem;
+}
+.wordmark .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.masthead nav { margin-left: auto; display: flex; gap: 1.25rem; align-items: center; }
+.masthead nav a { font-size: 14px; color: var(--ink-2); text-decoration: none; }
+.masthead nav a:hover { color: var(--accent); }
+@media (max-width: 720px) { .masthead nav a.opt { display: none; } }
+
+/* ---------- layout ---------- */
+.shell { display: grid; grid-template-columns: 15rem minmax(0,1fr); gap: clamp(1.5rem,4vw,4rem);
+         max-width: 78rem; margin: 0 auto; padding: 0 clamp(1rem,4vw,2.5rem) 6rem; }
+@media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .toc { display: none; } }
+.toc { position: sticky; top: 5rem; align-self: start; max-height: calc(100vh - 7rem); overflow-y: auto;
+       padding-top: 3rem; font-size: 14px; }
+.toc h2 { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+          color: var(--ink-3); margin: 0 0 .85rem; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .1rem; }
+.toc a { display: block; padding: .3rem .6rem; color: var(--ink-2); text-decoration: none;
+         border-left: 2px solid var(--rule); }
+.toc a:hover { color: var(--accent); border-left-color: var(--accent); background: var(--surface-2); }
+
+main { min-width: 0; padding-top: 3rem; }
+section { scroll-margin-top: 5.5rem; }
+section + section { margin-top: 3.5rem; }
+
+/* ---------- type ---------- */
+h1 { font-size: clamp(2.1rem, 5vw, 3rem); line-height: 1.08; letter-spacing: -.03em;
+     font-weight: 700; margin: 0 0 1rem; text-wrap: balance; }
+h2 { font-size: 1.5rem; line-height: 1.2; letter-spacing: -.02em; font-weight: 600;
+     margin: 0 0 .35rem; text-wrap: balance; }
+h3 { font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em; margin: 2rem 0 .5rem; }
+p, li { max-width: 68ch; }
+p { margin: 0 0 1rem; }
+.lede { font-size: 1.15rem; color: var(--ink-2); max-width: 62ch; }
+.eyebrow { font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+           color: var(--accent); margin: 0 0 .7rem; display: block; }
+.sub { color: var(--ink-3); font-size: .95rem; margin: 0 0 1.5rem; }
+strong { font-weight: 600; }
+
+/* ---------- hero ---------- */
+.hero { padding: 3.5rem 0 1rem; }
+.badges { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1.5rem 0; }
+.badge { font: 500 12px/1 var(--mono); padding: .4rem .6rem; border-radius: 4px;
+         background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--rule); }
+.badge.ro { background: var(--accent-wash); color: var(--accent-ink); border-color: transparent; }
+
+/* ---------- code ---------- */
+pre { background: var(--code-bg); color: var(--code-fg); border-radius: 8px;
+      padding: 1rem 1.1rem; overflow-x: auto; margin: 0 0 1.25rem;
+      font: 400 13.5px/1.7 var(--mono); box-shadow: var(--shadow); }
+pre .c { color: var(--code-dim); }
+pre .p { color: #7fd8cf; }
+code { font: 400 .89em/1.4 var(--mono); background: var(--surface-2);
+       padding: .12em .38em; border-radius: 3px; border: 1px solid var(--rule); }
+pre code { background: none; padding: 0; border: 0; font-size: inherit; }
+
+/* ---------- tables ---------- */
+.scroll { overflow-x: auto; margin: 0 0 1.25rem; border: 1px solid var(--rule);
+          border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--rule);
+         vertical-align: top; }
+th { font: 500 11px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+     color: var(--ink-3); background: var(--surface-2); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code { background: none; border: 0; padding: 0; color: var(--accent-ink); white-space: nowrap; }
+
+/* ---------- callouts ---------- */
+.note { border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.15rem;
+        background: var(--surface); margin: 0 0 1.25rem; box-shadow: var(--shadow); }
+.note .tag { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+             display: block; margin-bottom: .5rem; }
+.note.warn { background: color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.note.warn .tag { color: var(--warn); }
+.note.key .tag { color: var(--accent); }
+.note p:last-child { margin-bottom: 0; }
+
+/* ---------- doctor sample ---------- */
+.status-ok   { color: var(--good); }
+.status-fail { color: var(--bad); }
+
+/* ---------- steps ---------- */
+.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; }
+.steps > li { counter-increment: s; position: relative; padding-left: 2.5rem; margin-bottom: 1.75rem; }
+.steps > li::before {
+  content: counter(s); position: absolute; left: 0; top: 0;
+  width: 1.65rem; height: 1.65rem; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 500 12px/1 var(--mono); color: var(--accent-ink);
+  background: var(--accent-wash);
+}
+.steps h3 { margin-top: 0; }
+
+footer { border-top: 1px solid var(--rule); margin-top: 4rem; padding: 2rem clamp(1rem,4vw,2.5rem);
+         color: var(--ink-3); font-size: 14px; }
+footer .inner { max-width: 78rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 1rem; }
+footer a { color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <a class="wordmark" href="#top"><span class="dot"></span>platform-mcp</a>
+  <nav>
+    <a class="opt" href="#quickstart">Quickstart</a>
+    <a class="opt" href="#tools">Tools</a>
+    <a class="opt" href="#gcp-setup">GCP setup</a>
+    <a class="opt" href="#troubleshooting">Troubleshooting</a>
+    <a href="https://github.com/deBilla/platform-mcp">GitHub</a>
+  </nav>
+</header>
+
+<div class="shell" id="top">
+
+  <aside class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#quickstart">Quickstart</a></li>
+      <li><a href="#tools">Tools</a></li>
+      <li><a href="#environments">Environments</a></li>
+      <li><a href="#configuration">Configuration</a></li>
+      <li><a href="#gcp-setup">GCP setup</a></li>
+      <li><a href="#security">Security model</a></li>
+      <li><a href="#observability">Observability</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#development">Development</a></li>
+    </ol>
+  </aside>
+
+  <main>
+
+    <section class="hero">
+      <span class="eyebrow">Model Context Protocol server</span>
+      <h1>Let an agent read your cloud, not rewrite it.</h1>
+      <p class="lede">platform-mcp gives Claude and other MCP clients sixteen read-only tools
+      across Google Cloud — logs, errors, metrics, inventory, recommendations and spend — so an
+      agent can investigate an incident or hunt for waste across staging and production in one
+      conversation.</p>
+      <div class="badges">
+        <span class="badge ro">Read-only by construction</span>
+        <span class="badge">PyPI · platform-mcp</span>
+        <span class="badge">Python 3.11+</span>
+        <span class="badge">MIT</span>
+      </div>
+<pre><code><span class="c"># no install step; uv fetches it on demand</span>
+claude mcp add platform-mcp --scope user -- uvx platform-mcp</code></pre>
+    </section>
+
+    <section id="quickstart">
+      <span class="eyebrow">Getting started</span>
+      <h2>Quickstart</h2>
+      <p class="sub">Three steps, about five minutes, assuming you can create a service account.</p>
+
+      <ol class="steps">
+        <li>
+          <h3>Create a read-only service account</h3>
+          <p>Once per GCP project you want to reach. The script is idempotent and prints the
+          config to paste when it finishes.</p>
+<pre><code>git clone https://github.com/deBilla/platform-mcp &amp;&amp; cd platform-mcp
+
+./scripts/setup-service-account.sh \
+  --project my-app-staging \
+  --user you@example.com \
+  --billing-dataset my-billing-project:billing   <span class="c"># optional</span></code></pre>
+        </li>
+        <li>
+          <h3>Write the config file</h3>
+          <p>One file at <code>~/.config/platform-mcp/config.toml</code> keeps project ids out of
+          every client config you own.</p>
+<pre><code>default_environment = <span class="p">"staging"</span>
+
+[environments.staging]
+project = <span class="p">"my-app-staging"</span>
+impersonate = <span class="p">"platform-mcp-ro@my-app-staging.iam.gserviceaccount.com"</span>
+
+[environments.production]
+project = <span class="p">"my-app"</span>
+impersonate = <span class="p">"platform-mcp-ro@my-app.iam.gserviceaccount.com"</span>
+billing_export_table = <span class="p">"my-billing-project.billing.gcp_billing_export_v1_XXXXXX"</span></code></pre>
+        </li>
+        <li>
+          <h3>Register it, then check it</h3>
+<pre><code>gcloud auth application-default login
+claude mcp add platform-mcp --scope user -- uvx platform-mcp
+platform-mcp doctor</code></pre>
+          <p><code>doctor</code> proves every prerequisite for every environment before you
+          discover a gap mid-incident.</p>
+        </li>
+      </ol>
+
+      <div class="note key">
+        <span class="tag">Skip the approval prompts</span>
+        <p>Every tool here is read-only, so approving each call adds nothing. Allow the server
+        once in your Claude Code settings:</p>
+<pre style="margin-bottom:0"><code>{ <span class="p">"permissions"</span>: { <span class="p">"allow"</span>: [<span class="p">"mcp__platform-mcp__*"</span>] } }</code></pre>
+      </div>
+    </section>
+
+    <section id="tools">
+      <span class="eyebrow">Reference</span>
+      <h2>The sixteen tools</h2>
+      <p class="sub">Every tool takes an optional <code>environment</code> argument and echoes back
+      which project answered.</p>
+
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Area</th><th>Tool</th><th>What it answers</th></tr></thead>
+        <tbody>
+          <tr><td>Config</td><td><code>list_environments</code></td><td>Which projects can I reach, and which is the default?</td></tr>
+          <tr><td rowspan="2">Logging</td><td><code>query_logs</code></td><td>Cloud Logging with a filter expression and a freshness window.</td></tr>
+          <tr><td><code>get_recent_errors</code></td><td>Recent error-severity entries, condensed.</td></tr>
+          <tr><td>Errors</td><td><code>list_error_groups</code></td><td>Grouped application errors with counts and affected users.</td></tr>
+          <tr><td rowspan="3">Monitoring</td><td><code>query_metric</code></td><td>A metric time series with an aligner and alignment period.</td></tr>
+          <tr><td><code>list_alert_policies</code></td><td>Alert policies and whether they are enabled.</td></tr>
+          <tr><td><code>list_uptime_checks</code></td><td>Uptime check configurations.</td></tr>
+          <tr><td rowspan="2">Recommender</td><td><code>list_cost_recommendations</code></td><td>Idle and rightsizing findings, fanned out across locations.</td></tr>
+          <tr><td><code>list_recommendations</code></td><td>One named recommender at one location.</td></tr>
+          <tr><td rowspan="2">Cost</td><td><code>get_cost_breakdown</code></td><td>Spend by service, SKU, project or region from the billing export.</td></tr>
+          <tr><td><code>get_billing_info</code></td><td>Which billing account is linked, and is it enabled?</td></tr>
+          <tr><td rowspan="5">Inventory</td><td><code>search_assets</code></td><td>Any resource, via Cloud Asset Inventory.</td></tr>
+          <tr><td><code>list_compute_instances</code></td><td>Compute Engine VMs.</td></tr>
+          <tr><td><code>list_cloud_run_services</code></td><td>Cloud Run services.</td></tr>
+          <tr><td><code>list_gke_clusters</code></td><td>GKE clusters.</td></tr>
+          <tr><td><code>list_sql_instances</code></td><td>Cloud SQL instances.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>All sixteen declare <code>readOnlyHint: true</code> and <code>destructiveHint: false</code>
+      in their MCP annotations. Those are advisory hints for clients; the actual guarantee comes
+      from the identity the server runs as.</p>
+    </section>
+
+    <section id="environments">
+      <span class="eyebrow">Concepts</span>
+      <h2>Environments</h2>
+      <p>One server process reaches every project you configure. Rather than a stateful
+      "switch environment" tool, each call names its own target — so a context compaction can
+      never leave an agent querying production while it believes it is on staging.</p>
+
+      <p>Names resolve generously. <code>prod</code>, <code>prd</code> and <code>live</code> reach
+      an environment called <code>production</code>; <code>stg</code>, <code>stage</code> and
+      <code>qa</code> reach <code>staging</code>; a bare project id works too. An unrecognised
+      name is an error listing the valid options — never a silent fallback.</p>
+
+      <p>Omitting the argument uses the default, which prefers <code>staging</code> when one
+      exists, so an unqualified question does not reach production by accident.</p>
+    </section>
+
+    <section id="configuration">
+      <span class="eyebrow">Reference</span>
+      <h2>Configuration</h2>
+      <p>The config file lives at <code>~/.config/platform-mcp/config.toml</code>. Environment
+      variables override it, so a shared committed file plus a local override works fine.</p>
+
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>PLATFORM_MCP_CONFIG</code></td><td>Use a config file somewhere else.</td></tr>
+          <tr><td><code>PLATFORM_MCP_ENVIRONMENTS</code></td><td>JSON registry, overriding the file's <code>[environments]</code>.</td></tr>
+          <tr><td><code>PLATFORM_MCP_DEFAULT_ENVIRONMENT</code></td><td>Which environment an unqualified call uses.</td></tr>
+          <tr><td><code>PLATFORM_MCP_DEFAULT_LIMIT</code></td><td>Default row cap for list-style tools.</td></tr>
+          <tr><td><code>PLATFORM_MCP_AUDIT_LOG</code></td><td>Audit file path, or <code>off</code>.</td></tr>
+          <tr><td><code>PLATFORM_MCP_LOG_LEVEL</code></td><td>stderr verbosity.</td></tr>
+          <tr><td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td><td>Service-account key file, if you must use one.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="gcp-setup">
+      <span class="eyebrow">Setup</span>
+      <h2>GCP setup</h2>
+      <p>Run <code>scripts/setup-service-account.sh</code> once per project, or grant these by
+      hand. Every role is read-only, so the account cannot change anything regardless of what
+      the code does.</p>
+
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Role</th><th>Granted on</th><th>Needed for</th></tr></thead>
+        <tbody>
+          <tr><td><code>roles/viewer</code></td><td>project</td><td>Resource inventory</td></tr>
+          <tr><td><code>roles/logging.viewer</code></td><td>project</td><td>Logs and recent errors</td></tr>
+          <tr><td><code>roles/monitoring.viewer</code></td><td>project</td><td>Metrics, alerts, uptime</td></tr>
+          <tr><td><code>roles/errorreporting.viewer</code></td><td>project</td><td>Error groups</td></tr>
+          <tr><td><code>roles/recommender.viewer</code></td><td>project</td><td>Recommendations</td></tr>
+          <tr><td><code>roles/cloudasset.viewer</code></td><td>project</td><td>Asset search, location discovery</td></tr>
+          <tr><td><code>roles/bigquery.jobUser</code></td><td>project</td><td>Starting a cost query — no data access</td></tr>
+          <tr><td><code>roles/bigquery.dataViewer</code></td><td><strong>billing dataset</strong></td><td>Reading the billing export</td></tr>
+          <tr><td><code>roles/iam.serviceAccountTokenCreator</code></td><td>the account itself</td><td>Each person who uses the server</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="note warn">
+        <span class="tag">The grant everyone forgets</span>
+        <p><code>bigquery.jobUser</code> only lets the account <em>start</em> a query; it grants
+        no access to any data. A billing export almost always lives in a <strong>different
+        project</strong> from the one being monitored, so the account needs a separate read grant
+        on that dataset:</p>
+<pre><code>bq add-iam-policy-binding \
+  --member=<span class="p">"serviceAccount:$SA"</span> --role=roles/bigquery.dataViewer \
+  YOUR_BILLING_PROJECT:billing</code></pre>
+        <p style="margin-bottom:0">Miss it and <code>get_cost_breakdown</code> returns 403 while
+        every other tool works — which reads like a bug in the tool rather than a missing grant.
+        If you lack admin on the billing project, that one command is what to send to someone who
+        has it.</p>
+      </div>
+    </section>
+
+    <section id="security">
+      <span class="eyebrow">Design</span>
+      <h2>Security model</h2>
+      <p>Read-only is enforced by <strong>IAM, not by OAuth scope</strong>. The server requests
+      the broad <code>cloud-platform</code> scope and stays read-only because it never calls a
+      mutating API. Do not rely on that alone — run it under a viewer-only identity so the
+      credential itself is incapable of writing, whatever code executes.</p>
+
+      <p>You authenticate as yourself with Application Default Credentials, and the server
+      impersonates a read-only service account per environment. That means <strong>no key files
+      on anyone's laptop</strong>, nothing to leak or rotate, and every call attributable to a
+      named identity in Cloud Audit Logs.</p>
+
+      <div class="note key">
+        <span class="tag">A consequence worth knowing</span>
+        <p style="margin-bottom:0">Because the server never uses your credentials, your own access
+        tells you nothing about whether it works. You may read a table perfectly well while the
+        service account cannot. That gap is exactly what <code>platform-mcp doctor</code> exists to
+        close: it tests the identity the server actually uses.</p>
+      </div>
+    </section>
+
+    <section id="observability">
+      <span class="eyebrow">Operations</span>
+      <h2>Observability</h2>
+      <p>Every tool call appends one line to
+      <code>~/.local/state/platform-mcp/audit.jsonl</code>:</p>
+<pre><code>{<span class="p">"ts"</span>:<span class="p">"2026-08-30T18:20:11+0800"</span>,<span class="p">"tool"</span>:<span class="p">"query_logs"</span>,<span class="p">"environment"</span>:<span class="p">"production"</span>,
+ <span class="p">"project"</span>:<span class="p">"my-app"</span>,<span class="p">"duration_ms"</span>:412,<span class="p">"count"</span>:50,<span class="p">"bytes"</span>:18422,<span class="p">"error"</span>:null}</code></pre>
+
+      <p>Free-text arguments are recorded by name only. A Cloud Logging filter can carry user ids
+      or addresses from the logs being searched, and the audit file must not become a second copy
+      of that.</p>
+
+      <p>Diagnostic logs go to <strong>stderr</strong>. In stdio transport stdout carries the
+      JSON-RPC stream, so a single stray byte there ends the session — nothing in this package
+      writes to it. Claude Code surfaces stderr with <code>claude --debug=mcp</code>.</p>
+
+      <p>For a record that does not depend on this server at all, enable <strong>Data Access audit
+      logs</strong> in GCP for the read-only accounts. Token minting already appears in Admin
+      Activity logs with no configuration.</p>
+    </section>
+
+    <section id="troubleshooting">
+      <span class="eyebrow">Operations</span>
+      <h2>Troubleshooting</h2>
+      <p>Start with <code>platform-mcp doctor</code>. It checks credentials, impersonation, a real
+      API read and the billing export for every environment, and prints the command to fix
+      whatever fails.</p>
+
+<pre><code>platform-mcp doctor
+
+<span class="c">config file: ~/.config/platform-mcp/config.toml</span>
+
+[<span class="status-ok">  ok  </span>] Application Default Credentials (quota project: my-app-staging)
+
+<span class="c">environment: staging (default) -&gt; my-app-staging</span>
+[<span class="status-ok">  ok  </span>] impersonate platform-mcp-ro@my-app-staging.iam.gserviceaccount.com
+[<span class="status-ok">  ok  </span>] read Cloud Logging in my-app-staging
+[<span class="status-fail"> FAIL </span>] read billing export my-billing-project.billing.export_v1
+         Fix:  the identity needs roles/bigquery.jobUser on my-app-staging
+               AND roles/bigquery.dataViewer on the dataset holding the export</code></pre>
+
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+        <tbody>
+          <tr><td>No credentials found</td><td>Run <code>gcloud auth application-default login</code>.</td></tr>
+          <tr><td>403 on <code>getAccessToken</code></td><td>You lack Token Creator on the service account. If your ADC is <em>itself</em> an impersonated account, that account needs it, not your user.</td></tr>
+          <tr><td>Only <code>get_cost_breakdown</code> fails</td><td>The cross-project billing grant. See <a href="#gcp-setup">GCP setup</a>.</td></tr>
+          <tr><td>Cost totals identical across environments</td><td>Upgrade — before 0.2.0 the export was queried without a project filter.</td></tr>
+          <tr><td>Unexpected <code>SERVICE_DISABLED</code></td><td>Set a quota project: <code>gcloud auth application-default set-quota-project</code>.</td></tr>
+          <tr><td>Server dies at startup</td><td>An <code>mcp</code> 2.x install. 0.2.0 pins <code>mcp&lt;2</code>.</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="development">
+      <span class="eyebrow">Contributing</span>
+      <h2>Development</h2>
+<pre><code>git clone https://github.com/deBilla/platform-mcp &amp;&amp; cd platform-mcp
+python3 -m venv .venv &amp;&amp; ./.venv/bin/pip install -e <span class="p">".[dev]"</span>
+./.venv/bin/python -m pytest</code></pre>
+      <p>The suite runs in-process against an in-memory MCP client — no subprocess, no network,
+      no GCP credentials — covering environment resolution, the tool contract, annotations, error
+      translation and the audit log. CI additionally builds the package, asserts the sdist carries
+      no local configuration, and proves a clean install serves all sixteen tools.</p>
+      <p>Releases are tag-triggered and publish to PyPI with Trusted Publishing, so no API token
+      exists to leak.</p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="inner">
+    <span>platform-mcp — MIT licensed.</span>
+    <a href="https://github.com/deBilla/platform-mcp">Source</a>
+    <a href="https://pypi.org/project/platform-mcp/">PyPI</a>
+    <a href="https://github.com/deBilla/platform-mcp/issues">Issues</a>
+    <a href="https://modelcontextprotocol.io">Model Context Protocol</a>
+  </div>
+</footer>
+
+</body>
+</html>
