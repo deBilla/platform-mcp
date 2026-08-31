@@ -34,8 +34,14 @@ def _instructions() -> str:
         "GCP project to query. Set it from the user's wording (e.g. 'in prod', "
         "'on staging'); omit it to use the default environment. Never assume a "
         "guessed name — call list_environments if unsure. Each result echoes "
-        "back the `environment` and `project` it came from; when comparing "
-        "environments, call the same tool once per environment."
+        "back the `environment` and `project` it came from.\n\n"
+        "When the user does not name an environment, answer from the default "
+        "one alone. Do not survey the other environments as well: the default "
+        "is chosen to be the safe one, production data is noisier and more "
+        "expensive to read, and a question the user asked about one system is "
+        "not improved by mixing in another. Query several environments only "
+        "when the user asks to compare them or names more than one — then call "
+        "the same tool once per environment and label which is which."
     )
     try:
         configured = describe_environments()

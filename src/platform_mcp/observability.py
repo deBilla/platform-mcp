@@ -133,6 +133,10 @@ def _finish_ok(record: dict, fn: Callable, result: Any, started: float) -> None:
 
 def _finish_error(record: dict, fn: Callable, exc: Exception, started: float) -> Exception:
     record["duration_ms"] = round((time.perf_counter() - started) * 1000, 1)
+    # A failed call never reaches the result dict, so the environment has to
+    # come from the arguments -- otherwise the audit trail cannot say which
+    # project a failure was about, which is most of its value.
+    record.setdefault("environment", record["arguments"].get("environment"))
     record["error"] = type(exc).__name__
     record["error_message"] = str(exc)[:500]
     _write_audit(record)
