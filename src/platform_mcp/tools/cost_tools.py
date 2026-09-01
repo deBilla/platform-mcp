@@ -7,7 +7,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from ..clients import get_bigquery_client, get_billing_client
 from ..errors import PlatformMCPError
 from ..registration import register_tool
-from ..config import resolve_environment
+from ..config import list_environments, resolve_environment
 
 # Whitelisted group-by columns -> billing export column expressions. Kept as a
 # whitelist because column identifiers cannot be passed as query parameters.
@@ -33,9 +33,10 @@ def get_cost_breakdown(
     several environments commonly share one table, so an unfiltered query would
     return identical account-wide totals for staging and production.
 
-    Requires a standard-usage billing export configured in BigQuery, with the
-    fully-qualified table set per environment via 'billing_export_table' in
-    PLATFORM_MCP_ENVIRONMENTS (e.g. 'my-project.billing.gcp_billing_export_v1_X').
+    Only the environment holding the export needs 'billing_export_table' set:
+    one billing account exports to one project, and that export already covers
+    every project on the account. Asking any other environment for costs returns
+    an error naming the one that has it.
 
     Args:
         group_by: One of 'service', 'sku', 'project', 'region'. Default 'service'.
@@ -50,11 +51,24 @@ def get_cost_breakdown(
     env = resolve_environment(environment)
     table = env.billing_export_table
     if not table:
+        # One billing account usually exports to one project, so the other
+        # environments legitimately have no table of their own. Point at the
+        # environment that does rather than dead-ending: the export covers
+        # every project on the account, so the answer is reachable.
+        elsewhere = [e.name for e in list_environments() if e.billing_export_table]
+        if elsewhere:
+            names = ", ".join(f"'{n}'" for n in elsewhere)
+            raise PlatformMCPError(
+                f"Environment '{env.name}' has no billing export of its own. "
+                f"Billing is exported once for the whole account, under {names}. "
+                f"Call get_cost_breakdown(environment='{elsewhere[0]}', "
+                "all_projects=true, group_by='project') to see every project's "
+                f"spend, including {env.project}."
+            )
         raise PlatformMCPError(
-            "BigQuery billing export is not configured for environment "
-            f"'{env.name}'. Enable a Standard usage cost export (Billing > "
-            "Billing export) and set 'billing_export_table' for this "
-            "environment in the platform-mcp config."
+            "BigQuery billing export is not configured for any environment. "
+            "Enable a usage cost export (Billing > Billing export) and set "
+            "'billing_export_table' in the platform-mcp config."
         )
 
     column = _GROUP_BY_COLUMNS.get(group_by.lower())

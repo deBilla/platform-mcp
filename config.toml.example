@@ -20,6 +20,11 @@ default_limit = 50
 [environments.staging]
 project = "my-app-staging"
 
+# No billing_export_table here on purpose. One billing account usually exports
+# to a single project, and that export already covers every project on the
+# account -- so only the environment holding it needs the setting. Asking this
+# environment for costs returns an error naming the one that has it.
+
 # Read-only service account to impersonate. This is what makes "read-only" a
 # property of the identity rather than a promise about the code: point it at a
 # viewer-only account and no tool can mutate anything, whatever your own roles

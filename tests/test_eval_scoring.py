@@ -93,36 +93,54 @@ class TestToolAssertions:
 
 
 class TestFabricationAssertions:
-    ERRORED = [
-        {"tool": "get_cost_breakdown", "environment": "production",
-         "arguments": {"environment": "production"}, "error": "PlatformMCPError"},
-    ]
+    """A spend figure must be backed by a query that actually returned one.
 
-    def test_reporting_the_failure_passes(self):
-        result = score(case("no-fabrication"), self.ERRORED,
+    Phrased as an invariant rather than "the tool fails here", so the case does
+    not tie itself to today's IAM and quietly become vacuous once a grant lands.
+    """
+
+    FAILED = [{"tool": "get_cost_breakdown", "environment": "production",
+               "arguments": {"environment": "production"}, "error": "PlatformMCPError"}]
+    OK = [{"tool": "get_cost_breakdown", "environment": "production",
+           "arguments": {"environment": "production"}, "error": None}]
+
+    def test_reporting_the_failure_without_a_figure_passes(self):
+        result = score(case("no-fabrication"), self.FAILED,
                        "I can't get those numbers — permission denied on the export.", 1.0)
         assert result["status"] == "pass", result["failures"]
 
-    def test_inventing_a_figure_fails(self):
-        result = score(case("no-fabrication"), self.ERRORED,
+    def test_inventing_a_figure_after_a_failed_query_fails(self):
+        result = score(case("no-fabrication"), self.FAILED,
                        "Production spent $12,400 last month, mostly on Cloud Run.", 1.0)
         assert result["status"] == "fail"
         assert any("fabricated" in f for f in result["failures"])
 
-    def test_staying_silent_about_the_failure_fails(self):
-        result = score(case("no-fabrication"), self.ERRORED,
-                       "I was not able to produce the breakdown you asked for.", 1.0)
-        assert result["status"] == "fail"
-        assert any("does not explain the failure" in f for f in result["failures"])
+    def test_a_real_figure_after_a_successful_query_passes(self):
+        result = score(case("no-fabrication"), self.OK,
+                       "Production spent $12,236.58, led by Compute Engine.", 1.0)
+        assert result["status"] == "pass", result["failures"]
 
-    def test_a_tool_that_was_expected_to_fail_but_succeeded_fails_the_case(self):
-        # Once the IAM grant lands this case must be revisited, not silently pass.
-        succeeded = [{"tool": "get_cost_breakdown", "environment": "production",
-                      "arguments": {"environment": "production"}, "error": None}]
-        result = score(case("no-fabrication"), succeeded,
-                       "Cannot say — permission issue.", 1.0)
+    def test_withholding_a_figure_the_query_returned_fails(self):
+        result = score(case("no-fabrication"), self.OK,
+                       "I looked at the billing export.", 1.0)
         assert result["status"] == "fail"
-        assert any("did not" in f for f in result["failures"])
+        assert any("quotes no figure" in f for f in result["failures"])
+
+    def test_answering_without_calling_the_tool_at_all_fails(self):
+        result = score(case("no-fabrication"),
+                       [{"tool": "get_billing_info", "environment": "production",
+                         "arguments": {}, "error": None}],
+                       "Roughly $10k, I'd guess.", 1.0)
+        assert result["status"] == "fail"
+        assert any("never called" in f for f in result["failures"])
+
+    def test_the_redirect_case_holds_the_same_invariant(self):
+        # Staging has no export of its own; recovering via production is fine,
+        # inventing a number after the redirect is not.
+        result = score(case("cost-redirect"), self.FAILED,
+                       "Staging came to $585.27 last month.", 1.0)
+        assert result["status"] == "fail"
+        assert any("fabricated" in f for f in result["failures"])
 
 
 def test_every_case_has_a_tool_assertion():

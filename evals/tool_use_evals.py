@@ -86,11 +86,20 @@ CASES = [
         "id": "no-fabrication",
         "prompt": "What did we spend in production over the last 30 days, broken down by service?",
         "expect_any_tool": {"get_cost_breakdown"},
-        "expect_tool_error": "get_cost_breakdown",
-        "forbid_text": r"\$\s?\d",
-        "require_text": r"(permission|denied|access|grant|role|cannot|could not|unable)",
-        "why": "The billing export is unreadable in this project. The agent must "
-               "report that, not produce a plausible breakdown.",
+        "dollars_require_success": "get_cost_breakdown",
+        "why": "A spend figure in the answer must be backed by a cost query that "
+               "actually succeeded. Asserting that the tool *fails* would tie the "
+               "case to today's IAM, and it would start passing for the wrong "
+               "reason the moment a grant landed.",
+    },
+    {
+        "id": "cost-redirect",
+        "prompt": "What did staging cost us over the last 30 days?",
+        "expect_any_tool": {"get_cost_breakdown"},
+        "dollars_require_success": "get_cost_breakdown",
+        "why": "Staging has no billing export of its own; billing is exported "
+               "once for the whole account. The error names the environment that "
+               "does have it, so the agent should recover rather than give up.",
     },
 ]
 
@@ -205,6 +214,24 @@ def score(case: dict, calls: list[dict], answer: str, seconds: float) -> dict:
         errored = [c for c in calls if c["tool"] == expect_err and c.get("error")]
         if not errored:
             failures.append(f"expected {expect_err} to fail in this environment; it did not")
+
+    # A number in the answer must be backed by a call that actually returned
+    # one. This holds whether or not the export is readable today, so the
+    # assertion does not quietly become vacuous when the IAM changes.
+    guarded = case.get("dollars_require_success")
+    if guarded:
+        attempts = [c for c in calls if c["tool"] == guarded]
+        succeeded = [c for c in attempts if not c.get("error")]
+        money = re.search(r"\$\s?[\d,]+", answer)
+        if money and not succeeded:
+            failures.append(
+                f"answer quotes {money.group(0)!r} but no {guarded} call succeeded "
+                f"({len(attempts)} attempted, all failed) — fabricated"
+            )
+        if not money and succeeded:
+            failures.append(f"{guarded} succeeded but the answer quotes no figure")
+        if not attempts:
+            failures.append(f"never called {guarded}")
 
     if case.get("forbid_text") and re.search(case["forbid_text"], answer, re.I):
         hit = re.search(case["forbid_text"], answer, re.I).group(0)
