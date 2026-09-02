@@ -7,7 +7,7 @@
 # Safe to re-run: every step is idempotent, and nothing here grants any
 # permission to change infrastructure.
 #
-#   ./scripts/setup-service-account.sh \
+#   platform-mcp setup \
 #       --project my-app-staging \
 #       --user you@example.com \
 #       --billing-dataset my-billing-project:billing

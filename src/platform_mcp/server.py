@@ -68,6 +68,14 @@ for module in (
 
 def main() -> None:
     import argparse
+    import sys
+
+    # 'setup' forwards every remaining argument to the setup script, so it has
+    # to be dispatched before argparse sees flags it knows nothing about.
+    if sys.argv[1:2] == ["setup"]:
+        from .provisioning import run_setup
+
+        raise SystemExit(run_setup(sys.argv[2:]))
 
     parser = argparse.ArgumentParser(
         prog="platform-mcp",
@@ -80,9 +88,13 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["serve", "doctor"],
+        choices=["serve", "doctor", "setup"],
         default="serve",
-        help="'serve' (default) runs the server; 'doctor' checks GCP access.",
+        help=(
+            "'serve' (default) runs the server; 'doctor' checks GCP access; "
+            "'setup --project X' creates the read-only service account "
+            "(pass --help after it for its own options)."
+        ),
     )
     args = parser.parse_args()
 

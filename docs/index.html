@@ -253,11 +253,9 @@ claude mcp add platform-mcp --scope user -- uvx platform-mcp</code></pre>
       <ol class="steps">
         <li>
           <h3>Create a read-only service account</h3>
-          <p>Once per GCP project you want to reach. The script is idempotent and prints the
-          config to paste when it finishes.</p>
-<pre><code>git clone https://github.com/deBilla/platform-mcp &amp;&amp; cd platform-mcp
-
-./scripts/setup-service-account.sh \
+          <p>Once per GCP project you want to reach. It ships with the package &mdash; nothing to
+          clone. Idempotent, and it prints the config to paste when it finishes.</p>
+<pre><code>uvx platform-mcp setup \
   --project my-app-staging \
   --user you@example.com \
   --billing-dataset my-billing-project:billing   <span class="c"># optional</span></code></pre>
@@ -371,7 +369,7 @@ platform-mcp doctor</code></pre>
     <section id="gcp-setup">
       <span class="eyebrow">Setup</span>
       <h2>GCP setup</h2>
-      <p>Run <code>scripts/setup-service-account.sh</code> once per project, or grant these by
+      <p>Run <code>platform-mcp setup</code> once per project, or grant these by
       hand. Every role is read-only, so the account cannot change anything regardless of what
       the code does.</p>
 
@@ -492,9 +490,9 @@ platform-mcp doctor</code></pre>
 <pre><code>git clone https://github.com/deBilla/platform-mcp &amp;&amp; cd platform-mcp
 python3 -m venv .venv &amp;&amp; ./.venv/bin/pip install -e <span class="p">".[dev]"</span>
 ./.venv/bin/python -m pytest</code></pre>
-      <p>The suite runs in-process against an in-memory MCP client — no subprocess, no network,
-      no GCP credentials — covering environment resolution, the tool contract, annotations, error
-      translation and the audit log. CI additionally builds the package, asserts the sdist carries
+      <p>The suite runs against an in-memory MCP client — no network, no GCP credentials —
+      covering environment resolution, the tool contract, annotations, error translation and the
+      audit log. CI additionally builds the package, asserts the sdist carries
       no local configuration, and proves a clean install serves all sixteen tools.</p>
       <p>Releases are tag-triggered and publish to PyPI with Trusted Publishing, so no API token
       exists to leak.</p>
