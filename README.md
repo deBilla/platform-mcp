@@ -113,11 +113,12 @@ roles/bigquery.jobUser       # only for get_cost_breakdown
 ```
 
 **3. (Recommended) Use a dedicated read-only service account** instead of your
-login. The script does every step below, is safe to re-run, and prints the
-config stanza at the end:
+login. `platform-mcp setup` does every step below, is safe to re-run, and prints
+the config stanza at the end. It ships with the package, so there is nothing to
+clone:
 
 ```bash
-./scripts/setup-service-account.sh \
+uvx platform-mcp setup \
   --project YOUR_PROJECT_ID \
   --user you@example.com \
   --billing-dataset YOUR_BILLING_PROJECT:billing   # optional
@@ -310,9 +311,14 @@ appears in Admin Activity logs without any configuration.
 ./.venv/bin/python -m pytest
 ```
 
-The suite runs entirely in-process against an in-memory MCP client — no
-subprocess, no network, no GCP credentials — and covers environment resolution,
-the tool contract, annotations, error translation and the audit log.
+The suite runs against an in-memory MCP client — no network and no GCP
+credentials — and covers environment resolution, the tool contract,
+annotations, error translation and the audit log. The only subprocess is
+`bash -n` over the packaged setup script, which is skipped where bash is absent.
+
+The setup script lives at `src/platform_mcp/scripts/` because it ships as
+package data; `platform-mcp setup` runs it from wherever the package is
+installed, so the quickstart needs no checkout.
 
 ## Notes
 

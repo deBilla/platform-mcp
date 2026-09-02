@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "platform-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Read-only GCP platform-engineer MCP server for debugging and cost optimization"
 readme = "README.md"
 license = "MIT"
@@ -47,6 +47,11 @@ platform-mcp = "platform_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The one-time setup script ships inside the package so `platform-mcp setup`
+# works from a plain `uvx platform-mcp`, with no checkout to clone.
+[tool.setuptools.package-data]
+platform_mcp = ["scripts/*.sh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -3,7 +3,7 @@
   "name": "io.github.deBilla/platform-mcp",
   "title": "GCP Platform Engineer",
   "description": "Read-only GCP tools for debugging incidents and finding cost savings",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "websiteUrl": "https://debilla.github.io/platform-mcp/",
   "repository": {
     "url": "https://github.com/deBilla/platform-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "platform-mcp",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

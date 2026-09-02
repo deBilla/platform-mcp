@@ -112,6 +112,16 @@ jobs:
           sys.exit(0 if len(tools) == 16 else 1)
           PY
 
+      # The setup script ships as package data. If that declaration is ever
+      # dropped, `platform-mcp setup` breaks for installed users only -- never
+      # in a checkout, where the file sits on disk regardless.
+      - name: Assert the setup script ships in the wheel
+        run: |
+          script=$(/tmp/smoke/bin/python -c 'from importlib import resources as r; print(r.files("platform_mcp") / "scripts" / "setup-service-account.sh")')
+          test -f "$script" || { echo "::error::setup script missing from the installed package"; exit 1; }
+          bash -n "$script"
+          echo "setup script ships and parses: $script"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
