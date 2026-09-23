@@ -250,18 +250,8 @@ behaves as before, exposing one environment named `default`:
 claude mcp add platform-mcp --scope user -- uvx platform-mcp
 ```
 
-**Claude Desktop** — the same command and args in `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "platform-mcp": {
-      "command": "uvx",
-      "args": ["platform-mcp"]
-    }
-  }
-}
-```
+**Claude Desktop** — needs an absolute path to `uvx`; see
+[Claude Desktop](#claude-desktop) for the full walkthrough.
 
 Without a config file, add the environment variables from
 `.mcp.json.example` to either form.
@@ -283,6 +273,172 @@ pattern like `mcp__*` is ignored with a warning and approves nothing.
 ```bash
 uvx --with 'mcp[cli]' mcp dev src/platform_mcp/server.py
 ```
+
+## Claude Desktop
+
+Installing for a teammate who uses Claude Desktop rather than the CLI. It works
+the same as Claude Code, with one failure mode the CLI does not have.
+
+**Claude Desktop does not inherit your shell `PATH`.** It launches from the
+Finder, so `uvx` and anything installed by Homebrew or `uv` are invisible to it.
+A config that says `"command": "uvx"` fails with `ENOENT` — the server never
+starts, and the error names the command rather than the reason. **The command
+path must be absolute.**
+
+What does *not* break is credentials. Application Default Credentials are a
+file the Google libraries read directly, so `gcloud` is needed once, in a
+terminal, to create that file — not at runtime. The config file is found the
+same way, from the home directory, whatever launched the server.
+
+### Before you start: the admin grant
+
+Each person impersonates the read-only service accounts, so an admin runs this
+once per person, per environment (the `platform-mcp setup` script does it for
+whoever runs it, but not for anyone else):
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  platform-mcp-ro@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --member="user:teammate@example.com" \
+  --role="roles/iam.serviceAccountTokenCreator" --project YOUR_PROJECT_ID
+```
+
+Without it everything installs fine and `doctor` fails at the impersonation
+step.
+
+### 1. Install uv (macOS)
+
+An analyst's laptop usually has neither Homebrew nor the Xcode Command Line
+Tools, and nothing here needs them. Avoid `git`, `make` and the stock
+`/usr/bin/python3` along the way — they are stubs that pop a dialog offering to
+install a gigabyte of developer tooling. `uv` is a standalone binary:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+which uvx      # note this absolute path — Claude Desktop needs it
+```
+
+Typically `/Users/<you>/.local/bin/uvx`.
+
+### 2. Install the Google Cloud CLI
+
+The tarball bundles its own Python, so it needs nothing else. Avoid
+`brew install --cask google-cloud-sdk`: Homebrew itself requires the Command
+Line Tools. Pick the build for your chip — `uname -m` prints `arm64` for Apple
+Silicon, `x86_64` for Intel:
+
+```bash
+# Apple Silicon
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-arm.tar.gz
+tar -xzf google-cloud-cli-darwin-arm.tar.gz
+
+# Intel — same, with the other file
+# curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-x86_64.tar.gz
+# tar -xzf google-cloud-cli-darwin-x86_64.tar.gz
+
+./google-cloud-sdk/install.sh --quiet
+```
+
+### 3. Authenticate
+
+```bash
+./google-cloud-sdk/bin/gcloud auth application-default login
+```
+
+Log in as **yourself**. If your ADC is itself an impersonated service account,
+that account — not you — becomes the identity doing the impersonation, and it
+will not hold the grant above.
+
+### 4. Write the config file
+
+```bash
+mkdir -p ~/.config/platform-mcp
+touch ~/.config/platform-mcp/config.toml
+open -e ~/.config/platform-mcp/config.toml   # or any editor
+```
+
+```toml
+default_environment = "staging"
+
+[environments.staging]
+project = "my-app-staging"
+impersonate = "platform-mcp-ro@my-app-staging.iam.gserviceaccount.com"
+
+[environments.production]
+project = "my-app"
+impersonate = "platform-mcp-ro@my-app.iam.gserviceaccount.com"
+billing_export_table = "my-app.billing.gcp_billing_export_v1_XXXXXX"
+```
+
+See [Configuration](#configuration) for every key.
+
+### 5. Check it worked
+
+```bash
+~/.local/bin/uvx platform-mcp doctor
+```
+
+Every environment should pass. Fix anything that fails before touching Claude
+Desktop — a server that cannot authenticate still starts, and then every tool
+call errors.
+
+### 6. Edit the Claude Desktop config
+
+**Settings → Developer → Edit Config** opens it, or edit it directly:
+
+| OS | File |
+| --- | --- |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+(Settings → Connectors lists hosted connectors; a local server like this one is
+not added there.)
+
+**The file usually already exists and holds your Desktop preferences.** Add
+`mcpServers` as one more top-level key — do not replace the file, or you will
+lose those settings:
+
+```json
+{
+  "preferences": { "...": "your existing settings, left alone" },
+  "mcpServers": {
+    "platform-mcp": {
+      "command": "/Users/YOU/.local/bin/uvx",
+      "args": ["platform-mcp@latest"]
+    }
+  }
+}
+```
+
+Replace `/Users/YOU/.local/bin/uvx` with what `which uvx` printed. On Windows
+the path looks like `C:\\Users\\YOU\\.local\\bin\\uvx.exe` — backslashes doubled
+in JSON. `@latest` makes each launch pick up new releases.
+
+Check it still parses before restarting — a stray comma disables **every**
+server, silently. This uses only what ships with macOS:
+
+```bash
+osascript -l JavaScript -e 'function run(a){ObjC.import("Foundation");JSON.parse($.NSString.stringWithContentsOfFileEncodingError(a[0],4,null).js);return "valid"}' \
+  ~/Library/Application\ Support/Claude/claude_desktop_config.json
+```
+
+### 7. Restart Claude Desktop
+
+Quit it fully (**Cmd-Q**, not just closing the window) and reopen. Then ask
+*"list the configured environments"* — it should answer from `list_environments`.
+
+If it does not appear, the logs are in `~/Library/Logs/Claude/`
+(`mcp-server-platform-mcp.log`). `ENOENT` there means the `command` path is
+wrong.
+
+### Why not a key file?
+
+You can skip steps 2–3 by pointing `GOOGLE_APPLICATION_CREDENTIALS` (in the
+server's `env` block) at a downloaded service-account key. Think twice: a key
+is a long-lived credential sitting on a laptop, and the production read-only
+account can read every log, metric and billing row in that project.
+`application-default login` issues short-lived tokens tied to a person, and
+removing one grant revokes that person alone.
 
 ## Observability
 
