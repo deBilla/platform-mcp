@@ -30,7 +30,7 @@ class TestParseDuration:
     def test_understood_durations(self, text, seconds):
         assert parse_duration_seconds(text) == seconds
 
-    @pytest.mark.parametrize("text", [None, ""])
+    @pytest.mark.parametrize("text", [None, "", "   "])
     def test_unspecified_input_uses_the_default(self, text):
         assert parse_duration_seconds(text, default_seconds=42) == 42
 
@@ -39,7 +39,7 @@ class TestParseDuration:
         with pytest.raises(ValueError, match="90s, 30m, 2h, 1d, 1w"):
             parse_duration_seconds(text)
 
-    @pytest.mark.parametrize("text", ["-1h", "0", "-300", "0s"])
+    @pytest.mark.parametrize("text", ["-1h", "0", "-300", "0s", "0.5s", "0.5"])
     def test_non_positive_durations_raise(self, text):
         with pytest.raises(ValueError, match="positive"):
             parse_duration_seconds(text)

@@ -65,6 +65,8 @@ def parse_duration_seconds(freshness: str, default_seconds: int = 3600) -> int:
     if not freshness:
         return default_seconds
     text = freshness.strip().lower()
+    if not text:
+        return default_seconds
     units = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
     accepted_forms = "90s, 30m, 2h, 1d, 1w (or a bare number of seconds)"
     unit = text[-1]
@@ -84,6 +86,6 @@ def parse_duration_seconds(freshness: str, default_seconds: int = 3600) -> int:
             raise ValueError(
                 f"Cannot parse duration {freshness!r}: use one of {accepted_forms}"
             ) from None
-    if not math.isfinite(seconds) or seconds <= 0:
+    if not math.isfinite(seconds) or int(seconds) <= 0:
         raise ValueError(f"Duration must be positive: {freshness!r}")
     return int(seconds)
