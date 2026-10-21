@@ -39,7 +39,6 @@ def isolated_config(monkeypatch, tmp_path):
     for name in (
         "PLATFORM_MCP_ENVIRONMENTS",
         "PLATFORM_MCP_DEFAULT_ENVIRONMENT",
-        "PLATFORM_MCP_DEFAULT_LIMIT",
         "GCP_PROJECT",
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_QUOTA_PROJECT",

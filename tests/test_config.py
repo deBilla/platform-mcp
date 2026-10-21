@@ -7,7 +7,9 @@ resolution rules are asserted directly.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+from pathlib import Path
 
 import pytest
 
@@ -135,3 +137,24 @@ class TestConfigFile:
         monkeypatch.setenv("PLATFORM_MCP_ENVIRONMENTS", json.dumps({"dev": "p"}))
         clear_caches()
         assert resolve_environment("dev").project == "p"
+
+
+def test_every_setting_is_read_somewhere():
+    """A Settings field nothing reads is a setting that looks configurable and is not.
+
+    default_limit and default_location were parsed from the environment and
+    documented, but every tool hard-codes its own default, so setting them did
+    nothing. Add a field only together with the code that reads it.
+    """
+    package = Path(config.__file__).parent
+    consumers = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in package.rglob("*.py")
+        if path != Path(config.__file__)
+    )
+    unused = [
+        field.name
+        for field in dataclasses.fields(config.Settings)
+        if f".{field.name}" not in consumers
+    ]
+    assert unused == []

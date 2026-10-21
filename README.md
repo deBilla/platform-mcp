@@ -205,7 +205,6 @@ setup keeps running unchanged and a one-off override needs no edit:
 | `PLATFORM_MCP_ENVIRONMENTS` | JSON map of environment name → settings. The recommended way to configure the server. |
 | `PLATFORM_MCP_DEFAULT_ENVIRONMENT` | Environment used when a tool call omits `environment`. Defaults to `staging` if configured, else the first entry. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to a read-only SA key file (alternative to impersonation). |
-| `PLATFORM_MCP_DEFAULT_LIMIT` | Default max rows for list-style tools (default 50). |
 
 `PLATFORM_MCP_ENVIRONMENTS` holds a JSON object; each entry accepts:
 

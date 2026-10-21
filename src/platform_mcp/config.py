@@ -80,8 +80,6 @@ class Environment:
 class Settings:
     environments: tuple[Environment, ...]
     default_environment: str
-    default_location: str = "global"
-    default_limit: int = 50
 
 
 def _adc_project() -> str:
@@ -206,14 +204,6 @@ def _environments_from_file(file_config: dict) -> tuple[Environment, ...]:
 def get_settings() -> Settings:
     file_config = _load_config_file()
 
-    limit_raw = os.environ.get("PLATFORM_MCP_DEFAULT_LIMIT", "").strip()
-    if not limit_raw:
-        limit_raw = str(file_config.get("default_limit", 50))
-    try:
-        default_limit = max(1, int(limit_raw))
-    except ValueError:
-        default_limit = 50
-
     raw_registry = os.environ.get("PLATFORM_MCP_ENVIRONMENTS", "").strip()
     file_environments = _environments_from_file(file_config)
     if raw_registry:
@@ -251,8 +241,6 @@ def get_settings() -> Settings:
     return Settings(
         environments=environments,
         default_environment=default_environment,
-        default_location=os.environ.get("GCP_LOCATION", "global"),
-        default_limit=default_limit,
     )
 
 

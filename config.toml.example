@@ -13,9 +13,6 @@
 # Prefer staging, so an unqualified question never reaches production.
 default_environment = "staging"
 
-# Default max rows for list-style tools.
-default_limit = 50
-
 
 [environments.staging]
 project = "my-app-staging"
