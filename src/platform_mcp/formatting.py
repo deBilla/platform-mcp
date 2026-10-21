@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -53,20 +54,36 @@ def parse_list_arg(value: str | None) -> list[str]:
 
 
 def parse_duration_seconds(freshness: str, default_seconds: int = 3600) -> int:
-    """Parse a duration like '30m', '2h', '1d', '90s' into seconds."""
+    """Parse a duration like '30m', '2h', '1d', '1w', '90s' into seconds.
+
+    Empty input means "not specified" and returns the default. Anything
+    else must parse to a positive number of seconds; unparseable, zero or
+    negative input raises ValueError instead of silently falling back, so
+    an agent asking for a week of logs can't be quietly answered with an
+    hour of them.
+    """
     if not freshness:
         return default_seconds
-    freshness = freshness.strip().lower()
-    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-    unit = freshness[-1]
+    text = freshness.strip().lower()
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+    accepted_forms = "90s, 30m, 2h, 1d, 1w (or a bare number of seconds)"
+    unit = text[-1]
     if unit in units:
         try:
-            amount = float(freshness[:-1])
+            amount = float(text[:-1])
         except ValueError:
-            return default_seconds
-        return int(amount * units[unit])
-    # Bare number -> treat as seconds.
-    try:
-        return int(float(freshness))
-    except ValueError:
-        return default_seconds
+            raise ValueError(
+                f"Cannot parse duration {freshness!r}: use one of {accepted_forms}"
+            ) from None
+        seconds = amount * units[unit]
+    else:
+        # Bare number -> treat as seconds.
+        try:
+            seconds = float(text)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse duration {freshness!r}: use one of {accepted_forms}"
+            ) from None
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError(f"Duration must be positive: {freshness!r}")
+    return int(seconds)

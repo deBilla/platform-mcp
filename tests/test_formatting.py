@@ -21,6 +21,7 @@ class TestParseDuration:
             ("30m", 1800),
             ("2h", 7200),
             ("1d", 86400),
+            ("1w", 604800),
             ("1.5h", 5400),
             ("  6H  ", 21600),
             ("300", 300),
@@ -29,9 +30,19 @@ class TestParseDuration:
     def test_understood_durations(self, text, seconds):
         assert parse_duration_seconds(text) == seconds
 
-    @pytest.mark.parametrize("text", ["", "soon", "abcs", "h"])
-    def test_unparseable_input_falls_back_to_the_default(self, text):
+    @pytest.mark.parametrize("text", [None, ""])
+    def test_unspecified_input_uses_the_default(self, text):
         assert parse_duration_seconds(text, default_seconds=42) == 42
+
+    @pytest.mark.parametrize("text", ["soon", "abcs", "h", "2 hours", "w", "1wk"])
+    def test_unparseable_input_raises_instead_of_shrinking_the_window(self, text):
+        with pytest.raises(ValueError, match="90s, 30m, 2h, 1d, 1w"):
+            parse_duration_seconds(text)
+
+    @pytest.mark.parametrize("text", ["-1h", "0", "-300", "0s"])
+    def test_non_positive_durations_raise(self, text):
+        with pytest.raises(ValueError, match="positive"):
+            parse_duration_seconds(text)
 
 
 class TestTruncate:
