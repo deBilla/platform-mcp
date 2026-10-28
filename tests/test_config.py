@@ -83,6 +83,69 @@ class TestDefaults:
         with pytest.raises(RuntimeError, match="project"):
             config.get_settings()
 
+    @pytest.mark.parametrize(
+        "registry, shared",
+        [
+            # The same alias on two environments (issue #9).
+            (
+                {
+                    "staging": {"project": "demo-staging", "aliases": ["main"]},
+                    "production": {"project": "demo-prod", "aliases": ["main"]},
+                },
+                "main",
+            ),
+            # An alias that is another environment's project id.
+            (
+                {
+                    "staging": {"project": "demo-staging", "aliases": ["demo-prod"]},
+                    "production": {"project": "demo-prod"},
+                },
+                "demo-prod",
+            ),
+            # An alias that is another environment's name.
+            (
+                {
+                    "staging": {"project": "demo-staging", "aliases": ["production"]},
+                    "production": {"project": "demo-prod"},
+                },
+                "production",
+            ),
+        ],
+    )
+    def test_ambiguous_alias_is_rejected_at_load(self, monkeypatch, registry, shared):
+        monkeypatch.setenv("PLATFORM_MCP_ENVIRONMENTS", json.dumps(registry))
+        clear_caches()
+        with pytest.raises(RuntimeError, match=f"'{shared}'.*'staging' and 'production'"):
+            config.get_settings()
+
+    def test_shared_project_id_dropped_from_lookup(self, monkeypatch):
+        monkeypatch.setenv(
+            "PLATFORM_MCP_ENVIRONMENTS",
+            json.dumps({"staging": "demo-shared", "production": "demo-shared"}),
+        )
+        clear_caches()
+        config.get_settings()
+        assert resolve_environment("staging").project == "demo-shared"
+        assert resolve_environment("production").project == "demo-shared"
+        with pytest.raises(ValueError, match="Unknown environment 'demo-shared'"):
+            resolve_environment("demo-shared")
+
+    def test_alias_repeating_its_own_name_or_project_is_fine(self, monkeypatch):
+        monkeypatch.setenv(
+            "PLATFORM_MCP_ENVIRONMENTS",
+            json.dumps(
+                {
+                    "staging": {"project": "demo-staging", "aliases": ["staging", "demo-staging"]},
+                    "production": {"project": "demo-prod", "aliases": ["live"]},
+                }
+            ),
+        )
+        clear_caches()
+        assert resolve_environment("demo-staging").name == "staging"
+        assert resolve_environment("live").name == "production"
+        # Built-in shorthands keep their "only if unambiguous" rule.
+        assert resolve_environment("prod").name == "production"
+
 
 class TestConfigFile:
     def _write(self, monkeypatch, tmp_path, body: str):

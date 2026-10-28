@@ -213,7 +213,7 @@ setup keeps running unchanged and a one-off override needs no edit:
 | `project` | **Required.** GCP project id. |
 | `impersonate` | Read-only SA to impersonate for this environment (no key file needed). |
 | `billing_export_table` | Fully-qualified BigQuery billing export table, required only for `get_cost_breakdown` (e.g. `YOUR_PROJECT_ID.billing.gcp_billing_export_v1_XXXXXX`). |
-| `aliases` | Extra names the agent may use for this environment. |
+| `aliases` | Extra names the agent may use for this environment. A name, alias or project id used by two environments is an error at startup. |
 
 A bare string value is shorthand for `{"project": "..."}`. As JSON inside
 `.mcp.json` the quotes must be escaped; unescaped it reads:
